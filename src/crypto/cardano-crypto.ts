@@ -8,7 +8,6 @@ import { BLAKE2b } from '@stablelib/blake2b';
 import { SHA256 } from '@stablelib/sha256';
 import { Buffer } from 'buffer';
 import Bip32PrivateKey from '@stricahq/bip32ed25519/dist/Bip32PrivateKey';
-import PrivateKey from '@stricahq/bip32ed25519/dist/PrivateKey';
 import PublicKey from '@stricahq/bip32ed25519/dist/PublicKey';
 import { crypto as TyphonCrypto } from '@stricahq/typhonjs';
 import { CryptoOperationError, ErrorCode } from '../errors/error-types';

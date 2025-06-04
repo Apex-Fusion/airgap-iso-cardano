@@ -22,39 +22,45 @@ import { CardanoV3SerializerCompanion } from "./serializer/cardano-v3-serializer
 import { CardanoProtocolOptions } from "./types/cardano";
 import { CardanoScanBlockExplorer } from "./block-explorer/CardanoScanBlockExplorer";
 
-// Define Cardano Protocol Networks
-const CARDANO_MAINNET_PROTOCOL_NETWORK: ProtocolNetwork = {
-  name: "Cardano Mainnet",
+// Define Cardano Protocol Networks following Tezos pattern
+export interface CardanoProtocolNetwork extends ProtocolNetwork {
+  indexerApi?: string;
+  indexerType?: string;
+}
+
+export const CARDANO_MAINNET_PROTOCOL_NETWORK: CardanoProtocolNetwork = {
+  name: "Mainnet",
   type: "mainnet",
   rpcUrl: "https://cardano-mainnet.blockfrost.io/api/v0",
   blockExplorerUrl: "https://cardanoscan.io",
+  indexerApi: "https://api.koios.rest/api/v1",
+  indexerType: "koios",
 };
 
-const CARDANO_TESTNET_PROTOCOL_NETWORK: ProtocolNetwork = {
-  name: "Cardano Testnet", 
+export const CARDANO_TESTNET_PROTOCOL_NETWORK: CardanoProtocolNetwork = {
+  name: "Testnet", 
   type: "testnet",
   rpcUrl: "https://cardano-testnet.blockfrost.io/api/v0",
   blockExplorerUrl: "https://testnet.cardanoscan.io",
+  indexerApi: "https://api.testnet.koios.rest/api/v1",
+  indexerType: "koios",
 };
 
 // Protocol identifier constant
 const CARDANO_PROTOCOL_IDENTIFIER = "cardano";
 
-export class CardanoModule implements AirGapModule {
-  private readonly networkRegistries: Record<string, ModuleNetworkRegistry>;
+export class CardanoModule implements AirGapModule<{ ProtocolNetwork: CardanoProtocolNetwork }> {
+  private readonly networkRegistries: Record<string, ModuleNetworkRegistry<CardanoProtocolNetwork>>;
   public readonly supportedProtocols: Record<string, ProtocolConfiguration>;
-  private readonly options: CardanoProtocolOptions;
 
-  constructor(options: CardanoProtocolOptions = { network: "mainnet" }) {
-    this.options = options;
-    
-    // Create network registry following airgap-coin-lib pattern
-    const networkRegistry: ModuleNetworkRegistry = new ModuleNetworkRegistry({
-      supportedNetworks: [CARDANO_MAINNET_PROTOCOL_NETWORK, CARDANO_TESTNET_PROTOCOL_NETWORK]
+  constructor() {
+    // Create network registry with mainnet only (hide network switching UI)
+    const cardanoNetworkRegistry: ModuleNetworkRegistry<CardanoProtocolNetwork> = new ModuleNetworkRegistry({
+      supportedNetworks: [CARDANO_MAINNET_PROTOCOL_NETWORK]
     });
 
     this.networkRegistries = {
-      [CARDANO_PROTOCOL_IDENTIFIER]: networkRegistry
+      [CARDANO_PROTOCOL_IDENTIFIER]: cardanoNetworkRegistry
     };
     
     // Use createSupportedProtocols like working modules
@@ -63,30 +69,50 @@ export class CardanoModule implements AirGapModule {
 
   async createOfflineProtocol(
     identifier: string,
+    networkOrId?: CardanoProtocolNetwork | string
   ): Promise<AirGapOfflineProtocol | undefined> {
     if (identifier !== CARDANO_PROTOCOL_IDENTIFIER) return undefined;
-    return new CardanoProtocol(this.options);
+    
+    // Follow Tezos pattern for network handling
+    const network: CardanoProtocolNetwork | undefined =
+      typeof networkOrId === 'object' 
+        ? networkOrId 
+        : this.networkRegistries[identifier]?.findNetwork(networkOrId);
+    
+    // Default to mainnet if no network specified (production standard)
+    const finalNetwork = network || CARDANO_MAINNET_PROTOCOL_NETWORK;
+    
+    const networkType = finalNetwork.type === 'testnet' ? 'testnet' : 'mainnet';
+    return new CardanoProtocol({ network: networkType });
   }
 
   async createOnlineProtocol(
     identifier: string,
-    networkOrId?: string,
+    networkOrId?: CardanoProtocolNetwork | string,
   ): Promise<AirGapOnlineProtocol | undefined> {
     if (identifier !== CARDANO_PROTOCOL_IDENTIFIER) return undefined;
     
-    // Ensure WASM is initialized before creating protocol
-    const network = networkOrId === "testnet" ? "testnet" : "mainnet";
+    // Follow Tezos pattern for network handling  
+    const network: CardanoProtocolNetwork | undefined =
+      typeof networkOrId === 'object' 
+        ? networkOrId 
+        : this.networkRegistries[identifier]?.findNetwork(networkOrId);
+    
+    // Default to mainnet if no network specified (production standard)
+    const finalNetwork = network || CARDANO_MAINNET_PROTOCOL_NETWORK;
+
+    const networkType = finalNetwork.type === 'testnet' ? 'testnet' : 'mainnet';
     // Use enhanced protocol for online functionality with staking, assets, analytics, and governance
-    return new EnhancedCardanoProtocol({ ...this.options, network });
+    return new EnhancedCardanoProtocol({ network: networkType });
   }
 
-  async createBlockExplorer(identifier: string, networkOrId?: string): Promise<AirGapBlockExplorer | undefined> {
+  async createBlockExplorer(identifier: string, networkOrId?: CardanoProtocolNetwork | string): Promise<AirGapBlockExplorer | undefined> {
     if (identifier !== CARDANO_PROTOCOL_IDENTIFIER) return undefined;
     
-    const network = networkOrId === "testnet" ? "testnet" : "mainnet";
-    const blockExplorerUrl = network === "testnet" 
-      ? CARDANO_TESTNET_PROTOCOL_NETWORK.blockExplorerUrl
-      : CARDANO_MAINNET_PROTOCOL_NETWORK.blockExplorerUrl;
+    const network: CardanoProtocolNetwork | undefined =
+      typeof networkOrId === 'object' ? networkOrId : this.networkRegistries[identifier]?.findNetwork(networkOrId);
+    
+    const blockExplorerUrl = network?.blockExplorerUrl || CARDANO_MAINNET_PROTOCOL_NETWORK.blockExplorerUrl;
     
     return new CardanoScanBlockExplorer(blockExplorerUrl);
   }

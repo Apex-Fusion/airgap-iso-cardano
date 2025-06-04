@@ -251,7 +251,10 @@ export class CardanoProtocol implements AirGapOfflineProtocol, AirGapOnlineProto
     for (let i = 0; i < publicKey.value.length; i += 2) {
       publicKeyBuffer[i / 2] = parseInt(publicKey.value.substr(i, 2), 16);
     }
-    return CardanoAddress.fromPaymentKey(publicKeyBuffer, this.options.network);
+    // Use current network from getNetwork() instead of static options
+    const network = await this.getNetwork();
+    const networkType = network.type === 'testnet' ? 'testnet' : 'mainnet';
+    return CardanoAddress.fromPaymentKey(publicKeyBuffer, networkType);
   }
 
 

@@ -1,0 +1,78 @@
+# Pre-commit configuration for AirGap Cardano Protocol Module
+# See https://pre-commit.com for more information
+
+repos:
+  # Local hooks using npm scripts
+  - repo: local
+    hooks:
+      # TypeScript compilation check
+      - id: typescript-check
+        name: TypeScript Compilation Check
+        entry: npm run typecheck
+        language: system
+        types: [typescript]
+        pass_filenames: false
+
+      # ESLint with auto-fix
+      - id: eslint-fix
+        name: ESLint Auto-fix
+        entry: bash -c 'npx eslint --fix --max-warnings 0 src/**/*.ts'
+        language: system
+        types: [typescript]
+        pass_filenames: false
+
+      # Prettier formatting
+      - id: prettier-fix
+        name: Prettier Formatting
+        entry: npx prettier --write
+        language: system
+        types_or: [typescript, javascript, json, yaml, markdown]
+
+      # Core functionality tests (fast)
+      - id: test-core
+        name: Core Functionality Tests
+        entry: npm run test:core
+        language: system
+        pass_filenames: false
+        stages: [commit]
+
+      # Security tests on security-related files
+      - id: test-security
+        name: Security Tests
+        entry: npm run test:security
+        language: system
+        files: '^src/.*(security|crypto|validation|utils).*\.(ts|js)$'
+        pass_filenames: false
+
+  # External hooks for additional checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      # Basic file checks
+      - id: trailing-whitespace
+        exclude: '\.md$'
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+
+      # Security checks
+      - id: detect-private-key
+      - id: check-case-conflict
+
+  # Additional security scanning
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: package-lock.json
+
+  # Commit message validation
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: 3.12.0
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]

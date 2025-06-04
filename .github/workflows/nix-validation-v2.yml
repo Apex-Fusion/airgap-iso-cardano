@@ -1,0 +1,112 @@
+name: ❄️ Nix Environment Validation v2.1
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'flake.nix'
+      - 'flake.lock'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'flake.nix'
+      - 'flake.lock'
+  workflow_dispatch:
+
+concurrency:
+  group: nix-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ❄️ Flake Validation
+  validate-flake:
+    name: ❄️ Validate Nix Flake
+    runs-on: arc-runner-set
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ❄️ Setup Nix Environment
+        uses: ./.github/actions/setup-nix
+        with:
+          enable-flake-check: true
+
+      - name: 📊 Show flake information
+        run: |
+          echo "## ❄️ Nix Flake Information" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          nix flake show >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  # 🧪 Development Environment Test
+  test-dev-environment:
+    name: 🧪 Test Development Environment
+    runs-on: arc-runner-set
+    needs: validate-flake
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ❄️ Setup Nix Environment
+        uses: ./.github/actions/setup-nix
+        with:
+          enable-flake-check: false
+
+      - name: 🧪 Test development shell
+        run: |
+          echo "🧪 Testing Nix development environment..."
+          nix develop --command bash -c '
+            echo "✅ Development shell entered successfully"
+            echo ""
+            echo "📋 Environment Information:"
+            echo "Node.js version:" $(node --version)
+            echo "NPM version:" $(npm --version)
+            echo "TypeScript available:" $(command -v tsc && echo "Yes" || echo "No")
+            echo "Jest available:" $(command -v jest && echo "Yes" || echo "No")
+            echo "Earthly available:" $(command -v earthly && echo "Yes" || echo "No")
+            echo ""
+            echo "🔧 Quick functionality test..."
+            npm ci --silent
+            echo "✅ Dependencies installed successfully"
+            npm run typecheck
+            echo "✅ TypeScript compilation successful"
+          '
+
+  # ✅ Validation Summary
+  validation-summary:
+    name: ✅ Nix Validation Summary
+    runs-on: arc-runner-set
+    needs: [validate-flake, test-dev-environment]
+    if: always()
+    steps:
+      - name: 📊 Generate validation summary
+        run: |
+          echo "## ❄️ Nix Environment Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ❄️ Flake Validation | ${{ needs.validate-flake.result == 'success' && '✅ Valid' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🧪 Development Environment | ${{ needs.test-dev-environment.result == 'success' && '✅ Working' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.validate-flake.result }}" = "success" ] && [ "${{ needs.test-dev-environment.result }}" = "success" ]; then
+            echo "**Overall Status**: ✅ Nix environment is healthy and ready for development!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### ❄️ Nix Benefits Confirmed:" >> $GITHUB_STEP_SUMMARY
+            echo "- 🔄 **Reproducible**: Same environment everywhere" >> $GITHUB_STEP_SUMMARY
+            echo "- ⚡ **Cached**: Magic Nix Cache accelerates builds" >> $GITHUB_STEP_SUMMARY
+            echo "- 🎯 **Hermetic**: No external dependencies during build" >> $GITHUB_STEP_SUMMARY
+            echo "- 📦 **Complete**: All development tools available" >> $GITHUB_STEP_SUMMARY
+            echo "- 🏗️ **Integration Ready**: Compatible with CI/CD workflows" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Overall Status**: ❌ Nix environment has issues that need attention" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please check the individual job results above for details." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 🚨 Fail if critical validation failed
+        if: needs.validate-flake.result == 'failure' || needs.test-dev-environment.result == 'failure'
+        run: |
+          echo "Critical Nix validation failed!"
+          exit 1

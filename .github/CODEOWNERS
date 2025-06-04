@@ -1,0 +1,16 @@
+# Global code ownership
+# All files in this repository require approval from the repository owner
+* @robcohen
+
+# Root level files
+/.github/ @robcohen
+/src/ @robcohen
+/config/ @robcohen
+/scripts/ @robcohen
+
+# Critical configuration files
+package.json @robcohen
+package-lock.json @robcohen
+tsconfig*.json @robcohen
+eslint.config.mjs @robcohen
+CLAUDE.md @robcohen

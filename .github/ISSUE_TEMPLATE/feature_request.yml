@@ -1,0 +1,223 @@
+name: ✨ Feature Request
+description: Suggest a new feature or enhancement
+title: "[Feature]: "
+labels: ["enhancement", "needs-discussion"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a new feature! Your ideas help make the AirGap Cardano module better for everyone.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      description: Please verify you have completed these steps
+      options:
+        - label: I have searched for existing feature requests
+          required: true
+        - label: I have reviewed the project roadmap
+          required: true
+        - label: This feature aligns with the AirGap security model
+          required: true
+
+  - type: textarea
+    id: feature-summary
+    attributes:
+      label: ✨ Feature Summary
+      description: Brief description of the feature
+      placeholder: "Add support for..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: 🎯 Problem Statement
+      description: What problem does this feature solve?
+      placeholder: |
+        As a [user type], I want to [goal] so that [benefit].
+
+        Current limitations:
+        - Issue 1
+        - Issue 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: 💡 Proposed Solution
+      description: Detailed description of the proposed feature
+      placeholder: |
+        Describe your proposed solution in detail:
+        - How it should work
+        - What APIs it should expose
+        - How it integrates with existing functionality
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: 🚀 Use Cases
+      description: Specific use cases for this feature
+      placeholder: |
+        1. **Use Case 1**: Developer wants to...
+        2. **Use Case 2**: User needs to...
+        3. **Use Case 3**: Integration requires...
+    validations:
+      required: true
+
+  - type: textarea
+    id: api-design
+    attributes:
+      label: 🔧 API Design (Optional)
+      description: Proposed API design or interface
+      render: typescript
+      placeholder: |
+        // Example API design
+        interface NewFeature {
+          method(): Promise<Result>;
+        }
+
+        // Usage example
+        const result = await protocol.newFeature.method();
+
+  - type: dropdown
+    id: feature-type
+    attributes:
+      label: 📂 Feature Category
+      description: What type of feature is this?
+      options:
+        - "🔒 Security Enhancement"
+        - "⚡ Performance Improvement"
+        - "🎯 New Protocol Feature"
+        - "📱 QR Code Enhancement"
+        - "🔧 Developer Experience"
+        - "📊 Monitoring/Analytics"
+        - "🧪 Testing Infrastructure"
+        - "📖 Documentation"
+        - "🔄 Integration"
+        - "Other"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 📈 Priority Level
+      description: How important is this feature?
+      options:
+        - "🔴 Critical - Essential for core functionality"
+        - "🟠 High - Important for user experience"
+        - "🟡 Medium - Nice to have improvement"
+        - "🟢 Low - Minor enhancement"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 🔄 Alternative Solutions
+      description: Alternative approaches you've considered
+      placeholder: |
+        1. **Alternative 1**: Description and trade-offs
+        2. **Alternative 2**: Description and trade-offs
+        3. **Current workaround**: How you're solving this now
+
+  - type: textarea
+    id: implementation-notes
+    attributes:
+      label: ⚙️ Implementation Considerations
+      description: Technical considerations for implementation
+      placeholder: |
+        - Backward compatibility requirements
+        - Security implications
+        - Performance impact
+        - Testing requirements
+        - Documentation needs
+
+  - type: checkboxes
+    id: compatibility
+    attributes:
+      label: 🔄 Compatibility
+      description: Compatibility considerations
+      options:
+        - label: This feature should maintain backward compatibility
+        - label: This feature can introduce breaking changes (if major version)
+        - label: This feature requires updates to existing APIs
+
+  - type: checkboxes
+    id: security
+    attributes:
+      label: 🔒 Security Implications
+      description: Security-related considerations
+      options:
+        - label: This feature handles sensitive data (private keys, seeds)
+        - label: This feature requires additional security review
+        - label: This feature maintains air-gap security model
+        - label: This feature includes proper input validation
+
+  - type: textarea
+    id: testing-strategy
+    attributes:
+      label: 🧪 Testing Strategy
+      description: How should this feature be tested?
+      placeholder: |
+        - Unit tests for core functionality
+        - Integration tests with existing features
+        - Security-focused tests
+        - Performance benchmarks
+        - Property-based testing (if applicable)
+
+  - type: textarea
+    id: documentation
+    attributes:
+      label: 📖 Documentation Requirements
+      description: What documentation would be needed?
+      placeholder: |
+        - API documentation
+        - Usage examples
+        - Migration guide (if breaking changes)
+        - Security considerations
+        - Performance notes
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 📋 Additional Context
+      description: Any other context or screenshots
+      placeholder: |
+        - Related issues or discussions
+        - External resources or specifications
+        - Community feedback
+        - Timeline considerations
+
+  - type: dropdown
+    id: implementation-help
+    attributes:
+      label: 🤝 Implementation Help
+      description: Can you help implement this feature?
+      options:
+        - "✅ Yes, I can implement this feature"
+        - "🤝 Yes, I can help with implementation"
+        - "📖 I can help with documentation/testing"
+        - "💡 Idea only - cannot help with implementation"
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ## 🚀 Next Steps
+
+        After submitting this feature request:
+        1. The maintainers will review and label the request
+        2. Community discussion may be initiated for complex features
+        3. The feature may be added to the project roadmap
+        4. Implementation planning will begin for approved features
+
+        **Thank you for contributing to the AirGap Cardano module!** 🙏

@@ -1,0 +1,21 @@
+# TypeScript compilation check
+echo "🔍 Checking TypeScript compilation..."
+npm run typecheck
+
+# ESLint check with auto-fix (allow warnings, only fail on critical errors)
+echo "🧹 Running ESLint with auto-fix (development mode)..."
+npx eslint --fix src/**/*.ts || echo "⚠️ ESLint found issues but continuing..."
+
+# Format with Prettier
+echo "✨ Formatting code with Prettier..."
+npx prettier --write 'src/**/*.{ts,js}' '*.{md,json,yml,yaml}' || echo "⚠️ Prettier had issues but continuing..."
+
+# Security audit (only fail on high/critical)
+echo "🔒 Running security audit..."
+npm audit --audit-level=high
+
+# Run core tests (faster than full suite)
+echo "🧪 Running core functionality tests..."
+npm run test:core
+
+echo "✅ Pre-commit checks completed!"

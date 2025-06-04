@@ -1,0 +1,72 @@
+name: 'Setup Node.js with Caching'
+description: 'Optimized Node.js setup with aggressive caching for faster CI'
+inputs:
+  node-version:
+    description: 'Node.js version to use'
+    required: false
+    default: '20'
+  install-deps:
+    description: 'Whether to install dependencies'
+    required: false
+    default: 'true'
+  build:
+    description: 'Whether to build the project'
+    required: false
+    default: 'false'
+  build-airgap:
+    description: 'Whether to build AirGap module'
+    required: false
+    default: 'false'
+
+outputs:
+  cache-hit:
+    description: 'Whether cache was hit'
+    value: ${{ steps.cache.outputs.cache-hit }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🏗️ Setup Node.js ${{ inputs.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+
+    - name: 💾 Cache node_modules
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          node_modules
+          ~/.npm
+        key: ${{ runner.os }}-node-${{ inputs.node-version }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-${{ inputs.node-version }}-
+          ${{ runner.os }}-node-
+
+    - name: 📦 Install dependencies
+      if: inputs.install-deps == 'true' && steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
+
+    - name: 💾 Cache build artifacts
+      if: inputs.build == 'true' || inputs.build-airgap == 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          build/
+          dist/
+          coverage/
+        key: build-${{ github.sha }}-${{ github.run_attempt }}
+        restore-keys: |
+          build-${{ github.sha }}-
+
+    - name: 🏗️ Build project
+      if: inputs.build == 'true'
+      shell: bash
+      run: npm run build
+
+    - name: 🏗️ Build AirGap module
+      if: inputs.build-airgap == 'true'
+      shell: bash
+      run: npm run build:airgap

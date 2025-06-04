@@ -1,0 +1,328 @@
+name: 🔄 Dependency Management
+
+on:
+  schedule:
+    # Weekly on Mondays at 9 AM UTC
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+    inputs:
+      update_type:
+        description: 'Type of update to perform'
+        required: true
+        default: 'minor'
+        type: choice
+        options:
+          - minor
+          - patch
+          - security
+          - major
+      create_pr:
+        description: 'Create PR for updates'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  # 📊 Dependency Analysis
+  dependency-analysis:
+    name: 📊 Dependency Analysis
+    runs-on: arc-runner-set
+    outputs:
+      has-updates: ${{ steps.check.outputs.has-updates }}
+      has-security: ${{ steps.security.outputs.has-security }}
+      critical-count: ${{ steps.security.outputs.critical }}
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔍 Check for updates
+        id: check
+        run: |
+          echo "## 📊 Dependency Status" >> $GITHUB_STEP_SUMMARY
+          
+          npm outdated --json > outdated.json || true
+          
+          if [ -s outdated.json ] && [ "$(cat outdated.json)" != "{}" ]; then
+            echo "has-updates=true" >> $GITHUB_OUTPUT
+            echo "### 📦 Outdated Packages:" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+            cat outdated.json >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "has-updates=false" >> $GITHUB_OUTPUT
+            echo "### ✅ All dependencies up to date!" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 🛡️ Security audit
+        id: security
+        run: |
+          npm audit --json > audit.json || true
+          
+          CRITICAL=$(jq -r '.metadata.vulnerabilities.critical // 0' audit.json)
+          HIGH=$(jq -r '.metadata.vulnerabilities.high // 0' audit.json)
+          
+          echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+          echo "has-security=$( [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] && echo 'true' || echo 'false' )" >> $GITHUB_OUTPUT
+          
+          echo "### 🛡️ Security Status:" >> $GITHUB_STEP_SUMMARY
+          echo "- Critical: $CRITICAL" >> $GITHUB_STEP_SUMMARY
+          echo "- High: $HIGH" >> $GITHUB_STEP_SUMMARY
+
+  # 🔄 Minor/Patch Updates
+  minor-updates:
+    name: 🔄 Minor & Patch Updates
+    runs-on: arc-runner-set
+    needs: dependency-analysis
+    if: needs.dependency-analysis.outputs.has-updates == 'true' && (github.event.inputs.update_type == 'minor' || github.event.inputs.update_type == 'patch' || github.event_name == 'schedule')
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏗️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔄 Update dependencies
+        run: |
+          UPDATE_TYPE="${{ github.event.inputs.update_type || 'minor' }}"
+          
+          case $UPDATE_TYPE in
+            "patch")
+              npm update --save-exact
+              ;;
+            "minor"|*)
+              npm update
+              ;;
+          esac
+
+      - name: 🧪 Test updates
+        run: |
+          npm run build
+          npm run test:ci
+          npm run lint
+
+      - name: 📝 Generate changelog
+        run: |
+          echo "# Dependency Updates" > DEPENDENCY_CHANGELOG.md
+          echo "" >> DEPENDENCY_CHANGELOG.md
+          echo "**Generated**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> DEPENDENCY_CHANGELOG.md
+          echo "" >> DEPENDENCY_CHANGELOG.md
+          
+          if git diff --name-only | grep -q package-lock.json; then
+            echo "## 📦 Updated Dependencies" >> DEPENDENCY_CHANGELOG.md
+            echo "" >> DEPENDENCY_CHANGELOG.md
+            echo "The following dependencies were updated:" >> DEPENDENCY_CHANGELOG.md
+            echo "" >> DEPENDENCY_CHANGELOG.md
+            
+            # Extract updated packages from git diff
+            git diff package-lock.json | grep '"version":' | head -20 >> DEPENDENCY_CHANGELOG.md || true
+          fi
+
+      - name: 📝 Create PR
+        if: github.event.inputs.create_pr != 'false'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update dependencies (${{ github.event.inputs.update_type || 'minor' }})"
+          title: "🔄 Dependency Updates (${{ github.event.inputs.update_type || 'minor' }})"
+          body: |
+            ## 🔄 Automated Dependency Updates
+            
+            **Update Type**: ${{ github.event.inputs.update_type || 'minor' }}
+            **Generated**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+            
+            ### ✅ Validation Complete
+            - 🏗️ Build successful
+            - 🧪 All tests passing  
+            - 🧹 Linting passed
+            
+            ### 📋 Review Checklist
+            - [ ] Review updated dependencies
+            - [ ] Check for breaking changes
+            - [ ] Verify all tests pass in CI
+            - [ ] Security scan clean
+            
+            Auto-generated by dependency management workflow.
+          branch: automated/dependency-updates-${{ github.event.inputs.update_type || 'minor' }}
+          delete-branch: true
+          labels: |
+            dependencies
+            automated
+
+  # 🔒 Security Updates
+  security-updates:
+    name: 🔒 Security Updates
+    runs-on: arc-runner-set
+    needs: dependency-analysis
+    if: needs.dependency-analysis.outputs.has-security == 'true' || github.event.inputs.update_type == 'security'
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏗️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🛡️ Apply security fixes
+        run: |
+          echo "Applying security fixes..."
+          npm audit fix --force || true
+          
+          # If that doesn't work, try manual updates
+          if npm audit --audit-level=high --json | jq -e '.vulnerabilities | length > 0'; then
+            echo "Manual security updates required"
+            npm audit fix --package-lock-only || true
+          fi
+
+      - name: 🧪 Test security fixes
+        run: |
+          npm run build
+          npm run test:ci
+          npm run lint
+
+      - name: 📝 Create security PR
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "security: fix vulnerabilities"
+          title: "🔒 Security Vulnerability Fixes"
+          body: |
+            ## 🔒 Security Vulnerability Fixes
+            
+            **Critical vulnerabilities**: ${{ needs.dependency-analysis.outputs.critical-count }}
+            **Generated**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+            
+            ### 🛡️ Security Updates Applied
+            Automated security fixes using `npm audit fix`.
+            
+            ### ✅ Validation Complete
+            - 🏗️ Build successful
+            - 🧪 All tests passing
+            - 🧹 Linting passed
+            
+            ### ⚠️ Important
+            Review changes carefully as security fixes may introduce breaking changes.
+            
+            **URGENT: Merge immediately after review**
+          branch: automated/security-fixes
+          delete-branch: true
+          labels: |
+            security
+            critical
+            dependencies
+
+  # 📊 Dependency Report
+  dependency-report:
+    name: 📊 Generate Report
+    runs-on: arc-runner-set
+    needs: dependency-analysis
+    if: always()
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 📊 Generate comprehensive report
+        run: |
+          echo "# 📊 Dependency Health Report" > dependency-report.md
+          echo "" >> dependency-report.md
+          echo "**Generated**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> dependency-report.md
+          echo "" >> dependency-report.md
+          
+          echo "## 📦 Package Statistics" >> dependency-report.md
+          DEPS=$(npm list --depth=0 --json | jq '.dependencies | keys | length')
+          DEV_DEPS=$(npm list --depth=0 --json --dev | jq '.dependencies | keys | length')
+          echo "- Production dependencies: $DEPS" >> dependency-report.md
+          echo "- Development dependencies: $DEV_DEPS" >> dependency-report.md
+          echo "- Node.js version: $(node --version)" >> dependency-report.md
+          echo "" >> dependency-report.md
+          
+          echo "## 🛡️ Security Status" >> dependency-report.md
+          npm audit --json > audit.json || true
+          CRITICAL=$(jq -r '.metadata.vulnerabilities.critical // 0' audit.json)
+          HIGH=$(jq -r '.metadata.vulnerabilities.high // 0' audit.json)
+          echo "- Critical vulnerabilities: $CRITICAL" >> dependency-report.md
+          echo "- High vulnerabilities: $HIGH" >> dependency-report.md
+          echo "" >> dependency-report.md
+          
+          echo "## 🔄 Update Status" >> dependency-report.md
+          npm outdated --json > outdated.json || true
+          if [ -s outdated.json ] && [ "$(cat outdated.json)" != "{}" ]; then
+            echo "Updates available - see outdated.json artifact" >> dependency-report.md
+          else
+            echo "✅ All dependencies up to date" >> dependency-report.md
+          fi
+
+      - name: 📤 Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-reports
+          path: |
+            dependency-report.md
+            audit.json
+            outdated.json
+          retention-days: 30
+
+      - name: 🚨 Create critical security issue
+        if: needs.dependency-analysis.outputs.critical-count > 0
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('dependency-report.md', 'utf8');
+            
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 Critical Security Vulnerabilities in Dependencies',
+              body: `## 🚨 URGENT: Critical Security Alert
+              
+              **${{ needs.dependency-analysis.outputs.critical-count }} critical vulnerabilities** detected!
+              
+              ${report}
+              
+              ## 🔧 Immediate Actions Required:
+              1. 🔒 Run security update workflow immediately
+              2. 🧪 Test fixes thoroughly  
+              3. 🚀 Deploy security patches ASAP
+              4. 📋 Review dependency security policies
+              
+              **Auto-generated**: ${new Date().toISOString()}`,
+              labels: ['security', 'critical', 'urgent', 'dependencies']
+            });

@@ -1,0 +1,345 @@
+name: 🚀 Intelligent CI Pipeline v2.1
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/**'
+      - 'package*.json'
+      - 'tsconfig*.json'
+      - 'config/**'
+      - 'eslint.config.mjs'
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'Earthfile'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'src/**'
+      - 'package*.json'
+      - 'tsconfig*.json'
+      - 'config/**'
+      - 'eslint.config.mjs'
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'Earthfile'
+  workflow_dispatch:
+    inputs:
+      strategy:
+        description: 'Build strategy'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - earthly
+          - nix-only
+
+concurrency:
+  group: ci-v2.1-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  WORKFLOW_VERSION: "v2.1"
+  CACHE_BUSTER: "nix-cachix-standardized"
+
+jobs:
+  # 🔍 Environment Detection
+  detect-environment:
+    name: 🔍 Detect CI Environment
+    runs-on: arc-runner-set
+    outputs:
+      strategy: ${{ steps.detect.outputs.strategy }}
+      docker_available: ${{ steps.detect.outputs.docker_available }}
+      earthly_available: ${{ steps.detect.outputs.earthly_available }}
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔍 Detect environment capabilities
+        id: detect
+        run: |
+          echo "🔍 Detecting CI environment capabilities..."
+          
+          # Check Docker availability
+          DOCKER_AVAILABLE="false"
+          if command -v docker >/dev/null 2>&1; then
+            if sudo systemctl start docker 2>/dev/null || sudo service docker start 2>/dev/null; then
+              if docker info >/dev/null 2>&1; then
+                DOCKER_AVAILABLE="true"
+                echo "✅ Docker is available"
+              else
+                echo "⚠️ Docker installed but not working"
+              fi
+            else
+              echo "⚠️ Docker installed but daemon won't start"
+            fi
+          else
+            echo "❌ Docker not available"
+          fi
+          
+          # Determine strategy
+          STRATEGY="${{ github.event.inputs.strategy || 'auto' }}"
+          if [ "$STRATEGY" = "auto" ]; then
+            if [ "$DOCKER_AVAILABLE" = "true" ]; then
+              STRATEGY="earthly"
+              echo "🌍 Auto-selected: Earthly (Docker available)"
+            else
+              STRATEGY="nix-only"
+              echo "❄️ Auto-selected: Nix-only (Docker unavailable)"
+            fi
+          else
+            echo "🎯 Manual strategy: $STRATEGY"
+          fi
+          
+          echo "strategy=$STRATEGY" >> $GITHUB_OUTPUT
+          echo "docker_available=$DOCKER_AVAILABLE" >> $GITHUB_OUTPUT
+          echo "earthly_available=$DOCKER_AVAILABLE" >> $GITHUB_OUTPUT
+          
+          echo "## 🔍 Environment Detection Results" >> $GITHUB_STEP_SUMMARY
+          echo "- **Strategy**: $STRATEGY" >> $GITHUB_STEP_SUMMARY
+          echo "- **Docker**: $DOCKER_AVAILABLE" >> $GITHUB_STEP_SUMMARY
+          echo "- **Earthly**: $DOCKER_AVAILABLE" >> $GITHUB_STEP_SUMMARY
+
+  # ❄️ Nix Setup (Always Required)
+  nix-setup:
+    name: ❄️ Setup Nix Environment (v2.1-${{ github.run_number }})
+    runs-on: arc-runner-set
+    needs: detect-environment
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔍 Validate Workflow Version
+        run: |
+          echo "🔍 Validating workflow is using latest version..."
+          WORKFLOW_VERSION="v2.1"
+          echo "Current workflow version: $WORKFLOW_VERSION"
+          echo "Run number: ${{ github.run_number }}"
+          echo "SHA: ${{ github.sha }}"
+          
+          # Check if we're using custom actions (new method)
+          echo "Checking workflow definition..."
+          if grep -q ".github/actions/setup-nix" .github/workflows/ci-v2.yml; then
+            echo "✅ Using latest custom Nix action"
+          else
+            echo "❌ Still using old inline installation - cache issue detected"
+            exit 1
+          fi
+
+      - name: ❄️ Setup Nix Environment
+        uses: ./.github/actions/setup-nix
+        with:
+          enable-flake-check: true
+
+  # 🏗️ Build Stage
+  build:
+    name: 🏗️ Build (${{ needs.detect-environment.outputs.strategy }})
+    runs-on: arc-runner-set
+    needs: [detect-environment, nix-setup]
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ❄️ Setup Nix Environment
+        uses: ./.github/actions/setup-nix
+        with:
+          enable-flake-check: false
+
+
+      - name: 🐳 Setup Docker (if Earthly strategy)
+        if: needs.detect-environment.outputs.strategy == 'earthly'
+        run: |
+          sudo systemctl start docker || sudo service docker start || true
+          sudo usermod -aG docker $USER || true
+          docker --version
+
+      - name: 🏗️ Build with ${{ needs.detect-environment.outputs.strategy }}
+        run: |
+          echo "🔍 Testing Nix development environment..."
+          nix develop --command echo "Nix dev shell working"
+          
+          if [ "${{ needs.detect-environment.outputs.strategy }}" = "earthly" ]; then
+            echo "🌍 Building with Earthly..."
+            nix develop --command earthly +build || {
+              echo "⚠️ Earthly failed, falling back to Nix..."
+              nix develop --command bash -c "
+                set -e
+                echo '📦 Installing dependencies...'
+                npm ci
+                echo '🏗️ Building project...'
+                npm run build
+                echo '📦 Creating AirGap bundle...'
+                npm run bundle:airgap:zip
+              "
+            }
+          else
+            echo "❄️ Building with Nix..."
+            nix develop --command bash -c "
+              set -e
+              echo '📦 Installing dependencies...'
+              npm ci
+              echo '🏗️ Building project...'
+              npm run build
+              echo '📦 Creating AirGap bundle...'
+              npm run bundle:airgap:zip
+            "
+          fi
+
+      - name: 📊 Verify build artifacts
+        run: |
+          if [ -f "build/airgap-iso-cardano.zip" ] || [ -f "airgap-iso-cardano.zip" ]; then
+            echo "✅ AirGap module built successfully"
+          else
+            echo "❌ AirGap module not found" && exit 1
+          fi
+
+      - name: 💾 Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-${{ needs.detect-environment.outputs.strategy }}
+          path: |
+            build/
+            airgap-iso-cardano.zip
+          retention-days: 7
+
+  # 🧪 Test Matrix
+  test:
+    name: 🧪 Test (${{ matrix.suite }})
+    runs-on: arc-runner-set
+    needs: [detect-environment, nix-setup]
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [unit, integration, security, performance]
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ❄️ Setup Nix Environment
+        uses: ./.github/actions/setup-nix
+        with:
+          enable-flake-check: false
+
+      - name: 🐳 Setup Docker (if Earthly strategy)
+        if: needs.detect-environment.outputs.strategy == 'earthly'
+        run: |
+          sudo systemctl start docker || sudo service docker start || true
+          sudo usermod -aG docker $USER || true
+
+      - name: 🧪 Run ${{ matrix.suite }} tests
+        run: |
+          if [ "${{ needs.detect-environment.outputs.strategy }}" = "earthly" ]; then
+            nix develop --command earthly +test || nix develop --command bash -c "npm ci && npm run test:${{ matrix.suite }}"
+          else
+            nix develop --command bash -c "npm ci && npm run test:${{ matrix.suite }}"
+          fi
+
+      - name: 📊 Upload test results
+        if: matrix.suite == 'unit'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.suite }}
+          path: |
+            coverage/
+            test-results/
+          retention-days: 7
+        continue-on-error: true
+
+  # 🧹 Code Quality
+  quality:
+    name: 🧹 Code Quality
+    runs-on: arc-runner-set
+    needs: [detect-environment, nix-setup]
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ❄️ Setup Nix Environment
+        uses: ./.github/actions/setup-nix
+        with:
+          enable-flake-check: false
+
+      - name: 🧹 Run linting and type checking
+        run: |
+          nix develop --command bash -c "
+            npm ci
+            npm run lint
+            npm run typecheck
+          "
+
+      - name: 🔒 Security audit
+        run: nix develop --command npm audit --audit-level=high
+
+  # 🧪 Integration Tests
+  integration:
+    name: 🧪 Integration Verification
+    runs-on: arc-runner-set
+    needs: [detect-environment, build, test]
+    if: always() && !cancelled()
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ❄️ Setup Nix Environment
+        uses: ./.github/actions/setup-nix
+        with:
+          enable-flake-check: false
+
+      - name: 📥 Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: build-artifacts-*
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: 🧪 Verify integration
+        run: |
+          nix develop --command bash -c "
+            npm ci
+            [ -f 'build/airgap-iso-cardano.zip' ] && unzip -t build/airgap-iso-cardano.zip
+            [ -f 'airgap-iso-cardano.zip' ] && unzip -t airgap-iso-cardano.zip
+            npm run test:integration
+          "
+
+  # ✅ CI Success Gate
+  ci-success:
+    name: ✅ CI Pipeline Complete
+    runs-on: arc-runner-set
+    needs: [detect-environment, nix-setup, build, test, quality, integration]
+    if: always()
+    steps:
+      - name: 📊 Generate CI summary
+        run: |
+          echo "## ✅ CI Complete (${{ needs.detect-environment.outputs.strategy }})" >> $GITHUB_STEP_SUMMARY
+          echo "Build: ${{ needs.build.result == 'success' && '✅' || '❌' }} | Tests: ${{ needs.test.result == 'success' && '✅' || '❌' }} | Quality: ${{ needs.quality.result == 'success' && '✅' || '❌' }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: 🚨 Fail if critical jobs failed
+        if: |
+          needs.detect-environment.result == 'failure' || 
+          needs.nix-setup.result == 'failure' || 
+          needs.build.result == 'failure' || 
+          needs.test.result == 'failure' || 
+          needs.quality.result == 'failure' || 
+          needs.integration.result == 'failure'
+        run: |
+          echo "Critical CI jobs failed!"
+          exit 1
+
+  # 💬 PR Comment
+  pr-comment:
+    name: 💬 PR Success Notification
+    runs-on: arc-runner-set
+    needs: [detect-environment, ci-success]
+    if: github.event_name == 'pull_request' && needs.ci-success.result == 'success'
+    steps:
+      - name: 💬 Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `✅ **CI Passed** (${{ needs.detect-environment.outputs.strategy }}) - Build, tests, and quality checks complete. Ready for merge! 🎉`
+            });

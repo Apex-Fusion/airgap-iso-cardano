@@ -1,0 +1,136 @@
+name: 'Setup Nix Environment'
+description: 'Optimized Nix setup with ARC runner compatibility and Magic Nix Cache for faster CI'
+inputs:
+  enable-cache:
+    description: 'Whether to enable Magic Nix Cache (disabled for ARC runners due to cachix compatibility)'
+    required: false
+    default: 'false'
+  enable-flake-check:
+    description: 'Whether to run flake check validation'
+    required: false
+    default: 'true'
+  extra-conf:
+    description: 'Extra Nix configuration'
+    required: false
+    default: |
+      auto-optimise-store = true
+      warn-dirty = false
+      use-xdg-base-directories = true
+      log-lines = 25
+
+outputs:
+  cache-hit:
+    description: 'Whether Nix cache was effective'
+    value: ${{ steps.nix-cache.outputs.hit || 'false' }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 📦 Install xz-utils (required for Nix installation)
+      shell: bash
+      run: |
+        # Try to install xz-utils with fallback strategies
+        if ! command -v xz >/dev/null 2>&1; then
+          echo "xz not found, attempting installation..."
+          
+          # Try apt-get with timeout and retries
+          for i in {1..3}; do
+            echo "Attempt $i/3: Installing xz-utils via apt..."
+            if timeout 300 sudo apt-get update -qq && timeout 300 sudo apt-get install -y xz-utils; then
+              echo "✅ Successfully installed xz-utils via apt"
+              break
+            else
+              echo "❌ Attempt $i failed, retrying..."
+              sleep 5
+            fi
+          done
+          
+          # Final check
+          if ! command -v xz >/dev/null 2>&1; then
+            echo "❌ Failed to install xz-utils after 3 attempts"
+            echo "Environment may not support package installation"
+            exit 1
+          fi
+        else
+          echo "✅ xz already available"
+        fi
+
+    - name: ❄️ Install Nix (Cachix Single-User Mode for ARC runners)
+      uses: cachix/install-nix-action@v31
+      with:
+        github_access_token: ${{ github.token }}
+        install_options: --no-daemon
+        extra_nix_config: |
+          ${{ inputs.extra-conf }}
+          # Performance optimizations
+          max-jobs = auto
+          cores = 0
+          substituters = https://cache.nixos.org/ https://nix-community.cachix.org
+          trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+
+    - name: 🔧 Setup Nix environment for ARC runners
+      shell: bash
+      run: |
+        echo "🔧 Setting up Nix environment for ARC runners..."
+        # Find actual Nix installation in store (not other packages with "nix" in name)
+        NIX_STORE_PATH=$(find /nix/store -maxdepth 1 -name "*-nix-[0-9]*" -type d | head -1)
+        if [ -z "$NIX_STORE_PATH" ]; then
+          echo "❌ Nix installation not found in store"
+          exit 1
+        fi
+        echo "Found Nix at: $NIX_STORE_PATH"
+        
+        # Create profile directories
+        mkdir -p "$HOME/.nix-profile/bin"
+        mkdir -p "/nix/var/nix/profiles/default/bin"
+        
+        # Create essential symlinks
+        ln -sf "$NIX_STORE_PATH/bin/nix" "$HOME/.nix-profile/bin/nix"
+        ln -sf "$NIX_STORE_PATH/bin/nix" "/nix/var/nix/profiles/default/bin/nix"
+        
+        echo "✅ Nix environment setup complete"
+
+    - name: 🏗️ Enable Magic Nix Cache (if enabled)
+      if: inputs.enable-cache == 'true'
+      id: nix-cache
+      uses: DeterminateSystems/magic-nix-cache-action@v7
+      continue-on-error: true
+
+    - name: 🔍 Validate Nix installation
+      shell: bash
+      run: |
+        echo "🔍 Testing Nix installation..."
+        nix --version
+        echo "✅ Nix working correctly"
+
+    - name: 🔍 Validate flake
+      if: inputs.enable-flake-check == 'true'
+      shell: bash
+      run: |
+        echo "🔍 Validating Nix flake..."
+        nix flake check --no-build
+        echo "✅ Flake structure is valid"
+
+    - name: 🚀 Setup Nix build caching
+      shell: bash
+      run: |
+        echo "🚀 Optimizing Nix for faster builds..."
+        
+        # Pre-populate flake evaluation cache
+        nix flake show --no-warn-dirty >/dev/null 2>&1 || true
+        
+        # Pre-build development environment in background if not using Magic Cache
+        if [ "${{ inputs.enable-cache }}" != "true" ]; then
+          echo "📦 Pre-building development environment..."
+          nix develop --command echo "Dev environment cached" || true
+        fi
+        
+        echo "✅ Nix build optimizations complete"
+
+    - name: 📊 Environment info
+      shell: bash
+      run: |
+        echo "❄️ Nix environment ready!"
+        echo "Nix version: $(nix --version)"
+        echo "📊 Showing flake info..."
+        nix flake show --no-warn-dirty

@@ -1,0 +1,45 @@
+# <type>(<scope>): <subject>
+#
+# <body>
+#
+# <footer>
+
+# Type must be one of the following:
+# feat:     A new feature
+# fix:      A bug fix
+# docs:     Documentation only changes
+# style:    Changes that do not affect the meaning of the code
+# refactor: A code change that neither fixes a bug nor adds a feature
+# test:     Adding missing tests or correcting existing tests
+# chore:    Changes to the build process or auxiliary tools
+# perf:     A code change that improves performance
+# ci:       Changes to CI configuration files and scripts
+# build:    Changes that affect the build system or external dependencies
+# revert:   Reverts a previous commit
+
+# Scope is optional and should indicate what is changing:
+# Examples: crypto, utxo, qr, validation, security, performance
+
+# Subject:
+# - Use imperative mood ("add" not "added" or "adds")
+# - Don't capitalize first letter
+# - No period at the end
+# - Limit to 50 characters
+
+# Body (optional):
+# - Explain the motivation for the change
+# - Describe what changed and why
+# - Wrap at 72 characters
+
+# Footer (optional):
+# - Reference issues: "Closes #123"
+# - Breaking changes: "BREAKING CHANGE: description"
+# - Security fixes: "Security: fixes CVE-2023-1234"
+
+# Examples:
+# feat(utxo): add coin selection optimization algorithm
+# fix(crypto): resolve Ed25519 signature validation edge case
+# docs: update API documentation with security examples
+# test(fuzzing): add property-based tests for transaction building
+# perf(qr): optimize multi-part QR code generation
+# security: implement timing-safe comparison for private keys

@@ -1,0 +1,146 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-error.log
+pnpm-debug.log*
+
+# Build outputs
+/build/
+/tests/bundles/
+dist/
+dist-airgap/
+dist-simple/
+lib/
+*.tgz
+*.tar.gz
+
+# Development
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Test coverage
+coverage/
+.nyc_output/
+config/coverage/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Operating system files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# Nix
+flake.lock
+result
+result-*
+.direnv/
+
+# Claude Code (AI assistant) - optional, remove if you want to commit
+.claude/
+CLAUDE.md
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Security and secrets
+.secrets
+.env.secret
+*.pem
+*.key
+!jest.config.js
+!eslint.config.js
+.keys/
+
+# Package manager locks (keep package-lock.json but ignore others if using multiple)
+# yarn.lock
+# pnpm-lock.yaml
+
+# Performance monitoring
+.clinic/
+.0x/
+
+# Miscellaneous
+*.tsbuildinfo
+.eslintcache
+.stylelintcache
+
+# Temporary test bundles
+test-bundle/
+test-cardano-module.zip
+rootstock-reference/
+rootstock-reference.zip
+
+# Modern DevOps artifacts (Earthly + CI/CD)
+release/              # Production release artifacts  
+reports/              # CI/CD reports and summaries  
+test-results/         # Test results from pipelines
+*.tar                 # Container images
+*.oci                 # OCI container artifacts
+
+# VM testing artifacts
+vm-test-results/      # VM test outputs
+screenshots/          # Test screenshots
+*.qcow2              # VM disk images
+*.iso                # VM ISOs
+console.log          # VM console logs
+
+# Additional build artifacts  
+dist-*/              # Additional dist directories
+temp-module/         # Temporary module directories
+
+# Earthly cache and artifacts
+.earthly/            # Earthly cache directory
+earthly-cache/       # Alternative cache location
+*.earth              # Earthly build artifacts
+
+# MicroVM and virtualization artifacts
+*.sock               # Socket files (nixos.sock, etc.)
+*.socket             # Alternative socket files
+microvm-*/           # MicroVM state directories
+vm-state/            # VM state persistence
+
+# Editor and development temporaries
+.#*                  # Emacs temporary files
+#*#                  # Emacs autosave files
+*.backup             # Backup files
+*.bak                # Backup files
+*.orig               # Git merge backup files
+
+# Nix additional artifacts
+.gcroots/            # Nix garbage collection roots
+nix-build-*/         # Nix build temporary directories
+
+# Android SDK configuration (auto-generated)
+local.properties

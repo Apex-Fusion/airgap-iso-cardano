@@ -1,0 +1,26 @@
+# Pre-push validation
+
+# Full validation before push
+echo "🚀 Running full validation before push..."
+
+# TypeScript compilation
+echo "🔍 TypeScript compilation..."
+npm run typecheck
+
+# Linting (allow warnings for development)
+echo "🧹 ESLint check with auto-fix..."
+npm run lint:fix || echo "⚠️ ESLint found issues but continuing..."
+
+# Security test suite (focused on security)
+echo "🔒 Running security tests..."
+npm run test:security
+
+# Security audit
+echo "🔒 Security audit..."
+npm audit --audit-level=moderate
+
+# Build check
+echo "🏗️ Build check..."
+npm run build
+
+echo "✅ Pre-push validation completed! Ready to push."

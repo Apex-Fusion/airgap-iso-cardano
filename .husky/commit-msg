@@ -1,0 +1,11 @@
+# Commit message validation with commitlint
+npx --no-install commitlint --edit "$1"
+
+# Check for sensitive information in commit message
+if grep -qiE "(password|secret|key|token|private)" "$1"; then
+    echo "❌ Commit message contains potentially sensitive information!"
+    echo "Please review and remove any secrets from the commit message."
+    exit 1
+fi
+
+echo "✅ Commit message format valid"

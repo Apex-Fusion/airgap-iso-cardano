@@ -43,7 +43,7 @@ describe('Integration: Cardano Module with TyphonJS Polyfill', () => {
         // This import will trigger the polyfill installation at module level
         const { CardanoModule } = await import('../index');
         
-        const module = new CardanoModule({ network: 'mainnet' });
+        const module = new CardanoModule();
         
         expect(module).toBeDefined();
         expect(module.supportedProtocols).toBeDefined();
@@ -63,7 +63,7 @@ describe('Integration: Cardano Module with TyphonJS Polyfill', () => {
       try {
         const { CardanoModule } = await import('../index');
         
-        const module = new CardanoModule({ network: 'mainnet' });
+        const module = new CardanoModule();
         const offlineProtocol = await module.createOfflineProtocol('cardano');
         
         expect(offlineProtocol).toBeDefined();

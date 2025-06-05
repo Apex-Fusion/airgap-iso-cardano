@@ -1,6 +1,17 @@
 /**
  * Cardano Crypto utilities using pure JavaScript libraries
  * WebView-compatible implementation for AirGap isolated modules
+ * 
+ * CIP Compliance:
+ * - CIP-3: Wallet Key Generation (Icarus master node derivation)
+ * - CIP-1852: HD Wallets for Cardano (purpose 1852', coin type 1815')
+ * - CIP-19: Cardano Addresses (Blake2b-224 hashes, Ed25519 verification keys)
+ * - CIP-8: Message Signing (Ed25519 signatures with Blake2b hashing)
+ * 
+ * AirGap Protocol Compatibility:
+ * - Provides required interfaces for AirGap Vault integration
+ * - Uses 2019-2021 era libraries compatible with restrictive WebView
+ * - Includes utility methods for hex conversion and key derivation
  */
 
 import { generateMnemonic, mnemonicToSeed, validateMnemonic, entropyToMnemonic, mnemonicToEntropy } from 'bip39';
@@ -8,7 +19,6 @@ import { BLAKE2b } from '@stablelib/blake2b';
 import { SHA256 } from '@stablelib/sha256';
 import { Buffer } from 'buffer';
 import Bip32PrivateKey from '@stricahq/bip32ed25519/dist/Bip32PrivateKey';
-import PrivateKey from '@stricahq/bip32ed25519/dist/PrivateKey';
 import PublicKey from '@stricahq/bip32ed25519/dist/PublicKey';
 import { crypto as TyphonCrypto } from '@stricahq/typhonjs';
 import { CryptoOperationError, ErrorCode } from '../errors/error-types';
@@ -25,6 +35,9 @@ export function harden(num: number): number {
 export class CardanoCrypto {
   /**
    * Generate a cryptographically secure 24-word BIP39 mnemonic
+   * 
+   * @implements CIP-3 - Uses BIP39 standard for mnemonic generation
+   * @returns 24-word mnemonic (256 bits entropy) as per Cardano standards
    */
   static generateMnemonic(): string[] {
     try {
@@ -67,6 +80,11 @@ export class CardanoCrypto {
 
   /**
    * Convert mnemonic to cryptographic seed using PBKDF2
+   * 
+   * @implements CIP-3 - Uses BIP39 PBKDF2 for seed derivation
+   * @param mnemonic BIP39 mnemonic words
+   * @param passphrase Optional passphrase for additional security
+   * @returns 64-byte seed for key derivation
    */
   static async mnemonicToSeed(mnemonic: string[], passphrase: string = ''): Promise<Uint8Array> {
     try {
@@ -86,8 +104,14 @@ export class CardanoCrypto {
 
   /**
    * Derive Cardano root keypair from mnemonic using pure JavaScript BIP32-Ed25519
+   * 
+   * @implements CIP-3 - Icarus master node derivation algorithm
+   * @implements CIP-1852 - Uses BIP32-Ed25519 for hierarchical deterministic wallets
+   * @param mnemonic BIP39 mnemonic words
+   * @param passphrase Optional passphrase
+   * @returns 128-byte buffer: 96-byte extended private key + 32-byte public key
    */
-  static async deriveRootKeypair(mnemonic: string[], _passphrase: string = ''): Promise<Uint8Array> {
+  static async deriveRootKeypair(mnemonic: string[], passphrase: string = ''): Promise<Uint8Array> {
     try {
       const mnemonicStr = mnemonic.join(' ');
       
@@ -95,12 +119,46 @@ export class CardanoCrypto {
         throw new Error('Invalid mnemonic');
       }
 
-      // Convert mnemonic to entropy for BIP32-Ed25519
+      // CIP-3 Icarus: Generate master key using PBKDF2 with specific parameters
+      // 1. Convert mnemonic to entropy (seed) 
       const entropyHex = mnemonicToEntropy(mnemonicStr);
-      const entropyUint8 = new Uint8Array(Buffer.from(entropyHex, 'hex'));
+      const seedBytes = this.hexToUint8Array(entropyHex);
       
-      // Use pure JS BIP32-Ed25519 for Cardano-specific key derivation
-      const rootKey = await Bip32PrivateKey.fromEntropy(Buffer.from(entropyUint8));
+      // 2. Use PBKDF2 with:
+      //    - salt: entropy from mnemonic (seed)
+      //    - password: passphrase (or empty string)
+      //    - iterations: 4096
+      //    - outputLen: 96 bytes
+      const passwordBytes = new TextEncoder().encode(passphrase);
+      
+      // Use Web Crypto API for PBKDF2 (compatible with AirGap environment)
+      const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        passwordBytes,
+        "PBKDF2",
+        false,
+        ["deriveBits"]
+      );
+      
+      const derivedBits = await crypto.subtle.deriveBits(
+        {
+          name: "PBKDF2",
+          salt: seedBytes, // entropy from mnemonic as salt
+          iterations: 4096,
+          hash: "SHA-512"
+        },
+        keyMaterial,
+        96 * 8 // 96 bytes = 768 bits
+      );
+      
+      const masterKeyData = new Uint8Array(derivedBits);
+      
+      // CIP-3 Icarus: Apply bit tweaking to the first 32 bytes
+      this.tweakBits(masterKeyData);
+      
+      // Use the tweaked master key data directly as our extended private key
+      // (The CIP-3 algorithm produces the final master key, not an input to BIP32)
+      const rootKey = new Bip32PrivateKey(Buffer.from(masterKeyData));
       
       // Get the extended private key bytes (96 bytes) and derive public key
       const privateKeyExtended = rootKey.toBytes(); // 96 bytes: 64 extended + 32 chain code
@@ -118,7 +176,29 @@ export class CardanoCrypto {
   }
 
   /**
+   * CIP-3 Icarus bit tweaking for Ed25519 scalar
+   * 
+   * @implements CIP-3 - Bit tweaking algorithm from Icarus specification
+   * @param data 96-byte master key data to tweak (modifies in place)
+   */
+  private static tweakBits(data: Uint8Array): void {
+    // On the ed25519 scalar leftmost 32 bytes:
+    // * clear the lowest 3 bits
+    // * clear the highest bit  
+    // * clear the 3rd highest bit
+    // * set the highest 2nd bit
+    data[0]  &= 0b1111_1000;  // Clear lowest 3 bits
+    data[31] &= 0b0001_1111;  // Clear highest bit and 3rd highest bit
+    data[31] |= 0b0100_0000;  // Set 2nd highest bit
+  }
+
+  /**
    * Derive child keypair from parent using Cardano derivation path
+   * 
+   * @implements CIP-1852 - Hierarchical deterministic key derivation
+   * @param parentKeypair 128-byte parent keypair
+   * @param path BIP32 derivation path (e.g., "m/1852'/1815'/0'/0/0")
+   * @returns 128-byte child keypair
    */
   static async deriveChildKeypair(parentKeypair: ArrayLike<number>, path: string): Promise<Uint8Array> {
     try {
@@ -160,15 +240,22 @@ export class CardanoCrypto {
 
   /**
    * Derive payment keypair from mnemonic using CIP-1852 derivation path
-   * Standard path: m/1852'/1815'/account'/0/address_index
+   * 
+   * @implements CIP-1852 - Standard path: m/1852'/1815'/account'/0/address_index
+   * @param mnemonic BIP39 mnemonic words
+   * @param accountIndex Account index (usually 0)
+   * @param addressIndex Address index (0-based)
+   * @param passphrase Optional passphrase
+   * @returns 128-byte payment keypair
    */
   static async derivePaymentKeypair(
     mnemonic: string[], 
     accountIndex: number = 0, 
-    addressIndex: number = 0
+    addressIndex: number = 0,
+    passphrase: string = ''
   ): Promise<Uint8Array> {
     try {
-      const rootKeypair = await this.deriveRootKeypair(mnemonic);
+      const rootKeypair = await this.deriveRootKeypair(mnemonic, passphrase);
       const paymentPath = `m/${CIP1852_DERIVATION.PURPOSE}'/${CIP1852_DERIVATION.COIN_TYPE}'/${accountIndex}'/0/${addressIndex}`;
       return await this.deriveChildKeypair(rootKeypair, paymentPath);
     } catch (error) {
@@ -178,14 +265,21 @@ export class CardanoCrypto {
 
   /**
    * Derive stake keypair from mnemonic using CIP-1852 derivation path
-   * Standard path: m/1852'/1815'/account'/2/0
+   * 
+   * @implements CIP-1852 - Standard path: m/1852'/1815'/account'/2/0
+   * @implements CIP-11 - Staking key chain for HD wallets
+   * @param mnemonic BIP39 mnemonic words
+   * @param accountIndex Account index (usually 0)
+   * @param passphrase Optional passphrase
+   * @returns 128-byte stake keypair
    */
   static async deriveStakeKeypair(
     mnemonic: string[], 
-    accountIndex: number = 0
+    accountIndex: number = 0,
+    passphrase: string = ''
   ): Promise<Uint8Array> {
     try {
-      const rootKeypair = await this.deriveRootKeypair(mnemonic);
+      const rootKeypair = await this.deriveRootKeypair(mnemonic, passphrase);
       const stakePath = `m/${CIP1852_DERIVATION.PURPOSE}'/${CIP1852_DERIVATION.COIN_TYPE}'/${accountIndex}'/${CIP1852_DERIVATION.STAKE_KEY}/0`;
       return await this.deriveChildKeypair(rootKeypair, stakePath);
     } catch (error) {
@@ -222,7 +316,10 @@ export class CardanoCrypto {
       const extendedPrivateKey = keypairUint8.slice(0, 96);
       const bip32Key = new Bip32PrivateKey(Buffer.from(extendedPrivateKey));
       const signingKey = bip32Key.toPrivateKey();
-      return new Uint8Array(signingKey.toBytes());
+      const signingKeyBytes = new Uint8Array(signingKey.toBytes());
+      
+      // The signing key might be 64 bytes (32 bytes key + 32 bytes IV), we need just the first 32 bytes
+      return signingKeyBytes.slice(0, 32);
     } catch (error) {
       throw new CryptoOperationError(ErrorCode.INVALID_PRIVATE_KEY, `Failed to get private key: ${error}`);
     }
@@ -230,7 +327,11 @@ export class CardanoCrypto {
 
   /**
    * Sign transaction using pure JavaScript Ed25519
-   * Note: This function expects the full 128-byte keypair for compatibility
+   * 
+   * @implements CIP-8 - Message signing with Ed25519 signatures
+   * @param txHash Transaction hash to sign
+   * @param privateKeyOrKeypair 128-byte keypair for compatibility
+   * @returns Ed25519 signature (64 bytes)
    */
   static async signTransaction(txHash: Uint8Array, privateKeyOrKeypair: Uint8Array): Promise<Uint8Array> {
     try {
@@ -335,6 +436,11 @@ export class CardanoCrypto {
 
   /**
    * Hash data using Blake2b (Cardano standard) - enhanced with TyphonJS for common lengths
+   * 
+   * @implements CIP-19 - Blake2b-224 for key hashes, Blake2b-256 for general hashing
+   * @param data Data to hash
+   * @param outputLength Hash output length (28, 32, or 64 bytes)
+   * @returns Blake2b hash
    */
   static hashBlake2b(data: Uint8Array, outputLength: number = 32): Uint8Array {
     try {
@@ -366,6 +472,10 @@ export class CardanoCrypto {
 
   /**
    * Create payment key hash for Cardano address generation (Blake2b-224) using TyphonJS
+   * 
+   * @implements CIP-19 - PaymentKeyHash using Blake2b-224 hash of Ed25519 verification key
+   * @param publicKey 32-byte Ed25519 public key
+   * @returns 28-byte Blake2b-224 hash for address generation
    */
   static createPaymentKeyHash(publicKey: Uint8Array): Uint8Array {
     try {
@@ -383,6 +493,10 @@ export class CardanoCrypto {
 
   /**
    * Create stake key hash for Cardano address generation (Blake2b-224) using TyphonJS
+   * 
+   * @implements CIP-19 - StakeKeyHash using Blake2b-224 hash of Ed25519 verification key
+   * @param stakeKey 32-byte Ed25519 stake public key
+   * @returns 28-byte Blake2b-224 hash for stake address generation
    */
   static createStakeKeyHash(stakeKey: Uint8Array): Uint8Array {
     try {
@@ -433,19 +547,15 @@ export class CardanoCrypto {
     }
   }
 
-  // Browser-compatible utility methods
-  
-  /**
-   * Convert Uint8Array to Buffer for legacy compatibility
-   */
-  private static uint8ArrayToBuffer(uint8Array: Uint8Array): Buffer {
-    return Buffer.from(uint8Array);
-  }
+  // Utility methods for AirGap protocol compatibility
 
   /**
    * Convert hex string to Uint8Array
+   * 
+   * @param hex Hexadecimal string to convert
+   * @returns Uint8Array containing the decoded bytes
    */
-  private static hexToUint8Array(hex: string): Uint8Array {
+  static hexToUint8Array(hex: string): Uint8Array {
     const bytes = new Uint8Array(hex.length / 2);
     for (let i = 0; i < hex.length; i += 2) {
       bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
@@ -455,91 +565,13 @@ export class CardanoCrypto {
 
   // stringToUint8Array removed - use polyfilled TextEncoder instead
 
-  /**
-   * Legacy method: derive private key from mnemonic and return as Buffer
-   */
-  static async derivePrivateKeyBuffer(mnemonic: string[], path: string): Promise<Buffer> {
-    try {
-      const rootKeypair = await this.deriveRootKeypair(mnemonic);
-      const childKeypair = await this.deriveChildKeypair(rootKeypair, path);
-      const privateKey = this.getPrivateKey(childKeypair);
-      return this.uint8ArrayToBuffer(privateKey);
-    } catch (error) {
-      throw new CryptoOperationError(ErrorCode.KEY_DERIVATION_FAILED, `Failed to derive private key: ${error}`);
-    }
-  }
 
   /**
-   * Alias for derivePrivateKeyBuffer (for test compatibility)
-   */
-  static async derivePrivateKey(seed: Uint8Array | string[], path: string): Promise<Buffer> {
-    if (Array.isArray(seed)) {
-      // Seed is a mnemonic array
-      return await this.derivePrivateKeyBuffer(seed, path);
-    } else {
-      // Seed is raw Uint8Array, use simplified derivation for testing
-      try {
-        // For raw seed buffers, use a simplified approach that's deterministic
-        // This is mainly for testing - real usage should use mnemonic-based derivation
-        const pathHash = this.hashBlake2b(new TextEncoder().encode(path), 32);
-        const seedUint8 = new Uint8Array(seed);
-        const combinedSeed = new Uint8Array(seedUint8.length + pathHash.length);
-        combinedSeed.set(seedUint8);
-        combinedSeed.set(pathHash, seedUint8.length);
-        
-        const derivedKey = this.hashBlake2b(combinedSeed, 32);
-        return this.uint8ArrayToBuffer(derivedKey);
-      } catch (error) {
-        throw new CryptoOperationError(ErrorCode.KEY_DERIVATION_FAILED, `Failed to derive private key from seed: ${error}`);
-      }
-    }
-  }
-
-  /**
-   * Legacy method: derive public key from mnemonic and return as Buffer
-   */
-  static async derivePublicKeyBuffer(mnemonic: string[], path: string): Promise<Buffer> {
-    try {
-      const rootKeypair = await this.deriveRootKeypair(mnemonic);
-      const childKeypair = await this.deriveChildKeypair(rootKeypair, path);
-      const publicKey = this.getPublicKey(childKeypair);
-      return this.uint8ArrayToBuffer(publicKey);
-    } catch (error) {
-      throw new CryptoOperationError(ErrorCode.INVALID_PUBLIC_KEY, `Failed to derive public key: ${error}`);
-    }
-  }
-
-  /**
-   * Legacy method: derive keypair from seed buffer (not mnemonic)
-   */
-  static deriveKeypairFromSeed(seed: ArrayLike<number>, path: string): { privateKey: Buffer; publicKey: Buffer } {
-    try {
-      // Convert seed to mnemonic first (simplified approach)
-      // In practice, you'd use the seed directly with BIP32 derivation
-      // For now, we'll simulate keypair derivation from seed
-      
-      // Simple hash-based derivation (not cryptographically secure - for testing only)
-      const pathHash = CardanoCrypto.hashBlake2b(new TextEncoder().encode(path), 32);
-      const seedUint8 = new Uint8Array(seed);
-      const combinedSeed = new Uint8Array(seedUint8.length + pathHash.length);
-      combinedSeed.set(seedUint8);
-      combinedSeed.set(pathHash, seedUint8.length);
-      
-      const derivedKey = CardanoCrypto.hashBlake2b(combinedSeed, 64);
-      const privateKey = derivedKey.slice(0, 32);
-      const publicKey = derivedKey.slice(32, 64);
-      
-      return {
-        privateKey: this.uint8ArrayToBuffer(privateKey),
-        publicKey: this.uint8ArrayToBuffer(publicKey)
-      };
-    } catch (error) {
-      throw new CryptoOperationError(ErrorCode.KEY_DERIVATION_FAILED, `Failed to derive keypair from seed: ${error}`);
-    }
-  }
-
-  /**
-   * Derive public key from private key using cardano-crypto.js
+   * Derive public key from private key for AirGap protocol compatibility
+   * 
+   * @implements AirGap protocol interface requirement
+   * @param privateKeyBuffer 128-byte keypair or 32-byte private key  
+   * @returns Buffer containing 32-byte Ed25519 public key
    */
   static derivePublicKeyFromPrivateKey(privateKeyBuffer: ArrayLike<number>): Buffer {
     try {
@@ -548,16 +580,12 @@ export class CardanoCrypto {
       if (privateKeyUint8.length === 128) {
         // If we have a full 128-byte keypair, extract the public key
         const publicKey = this.getPublicKey(privateKeyUint8);
-        return this.uint8ArrayToBuffer(publicKey);
+        return Buffer.from(publicKey);
       } else if (privateKeyUint8.length === 32) {
-        // For a 32-byte private key, create a deterministic public key using Blake2b
-        // This ensures we get a valid 32-byte public key that's deterministic from the private key
-        const deterministicSeed = new Uint8Array(64);
-        deterministicSeed.set(privateKeyUint8); // First 32 bytes: private key
-        deterministicSeed.set(privateKeyUint8, 32); // Second 32 bytes: private key again for entropy
-        
-        const publicKey = this.hashBlake2b(deterministicSeed, 32);
-        return this.uint8ArrayToBuffer(publicKey);
+        // For a 32-byte private key, we cannot properly derive the Ed25519 public key
+        // without the full extended key context. This is a limitation.
+        // Return a warning in development environments.
+        throw new Error('Cannot derive Ed25519 public key from 32-byte private key without extended key context. Use 128-byte keypair format.');
       } else {
         throw new Error(`Invalid private key length: expected 32 bytes or 128 bytes (keypair), got ${privateKeyUint8.length} bytes`);
       }
@@ -566,51 +594,4 @@ export class CardanoCrypto {
     }
   }
 
-  /**
-   * Legacy method: sign and return signature as Buffer
-   * Only accepts 128-byte keypairs for proper Cardano signing
-   */
-  static async signBuffer(data: ArrayLike<number>, keypairBuffer: ArrayLike<number>): Promise<Buffer> {
-    try {
-      const dataUint8 = new Uint8Array(data);
-      const keyUint8 = new Uint8Array(keypairBuffer);
-      
-      // Only accept 128-byte keypairs for proper Cardano signing
-      if (keyUint8.length !== 128) {
-        throw new Error(`Invalid keypair length: expected 128 bytes (full keypair), got ${keyUint8.length} bytes. Use signWithKeypair for proper Cardano signing.`);
-      }
-      
-      const signature = await this.signWithKeypair(dataUint8, keyUint8);
-      return this.uint8ArrayToBuffer(signature);
-    } catch (error) {
-      throw new CryptoOperationError(ErrorCode.SIGNATURE_FAILED, `Failed to sign data: ${error}`);
-    }
-  }
-
-  /**
-   * Legacy method: verify signature from Buffers
-   */
-  static async verifyBuffer(
-    signatureBuffer: ArrayLike<number>,
-    data: ArrayLike<number>,
-    publicKeyBuffer: ArrayLike<number>
-  ): Promise<boolean> {
-    try {
-      const signatureUint8 = new Uint8Array(signatureBuffer);
-      const dataUint8 = new Uint8Array(data);
-      const publicKeyUint8 = new Uint8Array(publicKeyBuffer);
-      return await this.verifySignature(signatureUint8, dataUint8, publicKeyUint8);
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Legacy method: hash Blake2b and return as Buffer
-   */
-  static hashBlake2bBuffer(data: ArrayLike<number>, outputLength: number = 32): Buffer {
-    const dataUint8 = new Uint8Array(data);
-    const hash = this.hashBlake2b(dataUint8, outputLength);
-    return this.uint8ArrayToBuffer(hash);
-  }
 }

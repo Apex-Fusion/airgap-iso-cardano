@@ -58,15 +58,19 @@
     "cbor-js": "^0.1.0"
   },
   "devDependencies": {
+    "@cardano-sdk/crypto": "^0.3.0",
+    "@emurgo/cardano-serialization-lib-nodejs": "^14.1.2",
     "@types/jest": "^29.5.12",
     "@types/node": "^20.11.17",
     "@types/sinon": "^17.0.4",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
     "browserify": "^17.0.1",
+    "cardano-crypto.js": "^6.1.2",
     "esbuild": "^0.25.5",
     "eslint": "^8.56.0",
     "jest": "^29.7.0",
+    "lucid-cardano": "^0.10.11",
     "sinon": "^20.0.0",
     "ts-jest": "^29.1.2",
     "typescript": "^5.3.3"

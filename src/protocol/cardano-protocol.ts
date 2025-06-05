@@ -251,7 +251,10 @@ export class CardanoProtocol implements AirGapOfflineProtocol, AirGapOnlineProto
     for (let i = 0; i < publicKey.value.length; i += 2) {
       publicKeyBuffer[i / 2] = parseInt(publicKey.value.substr(i, 2), 16);
     }
-    return CardanoAddress.fromPaymentKey(publicKeyBuffer, this.options.network);
+    // Use current network from getNetwork() instead of static options
+    const network = await this.getNetwork();
+    const networkType = network.type === 'testnet' ? 'testnet' : 'mainnet';
+    return CardanoAddress.fromPaymentKey(publicKeyBuffer, networkType);
   }
 
 
@@ -351,7 +354,7 @@ export class CardanoProtocol implements AirGapOfflineProtocol, AirGapOnlineProto
   ): Promise<AirGapTransaction<"ADA", "ADA">> {
     try {
       // Parse CBOR transaction structure using basic CBOR parsing
-      const cborBytes = this.hexToUint8Array(cborHex);
+      const cborBytes = CardanoCrypto.hexToUint8Array(cborHex);
       const parsedTx = this.parseBasicCBORTransaction(cborBytes);
       
       // Analyze transaction for user's involvement
@@ -492,13 +495,6 @@ export class CardanoProtocol implements AirGapOfflineProtocol, AirGapOnlineProto
   /**
    * Convert hex string to Uint8Array
    */
-  private hexToUint8Array(hex: string): Uint8Array {
-    const bytes = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < hex.length; i += 2) {
-      bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
-    }
-    return bytes;
-  }
 
   // Online Protocol Methods
   async getTransactionsForPublicKey(

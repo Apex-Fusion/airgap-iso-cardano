@@ -6,6 +6,7 @@
 import { PublicKey, Amount } from "@airgap/module-kit";
 import { CardanoDataService } from "../data/cardano-data-service";
 import { CardanoAddress } from "../utils/address";
+import { CardanoCrypto } from "../crypto";
 import { Logger } from "../utils";
 // Use AirGap's embedded axios to avoid CORS issues
 import axios from '@airgap/coinlib-core/dependencies/src/axios-0.19.0';
@@ -380,7 +381,7 @@ export class CardanoAssetExtensions {
     try {
       // Combine policy ID and asset name as per CIP-14
       const combined = policyId + assetNameHex;
-      const data = this.hexToUint8Array(combined);
+      const data = CardanoCrypto.hexToUint8Array(combined);
       
       // Calculate CRC-8 checksum using polynomial 0x07 (CIP-14 standard)
       const crc8 = this.calculateCRC8(data);
@@ -438,13 +439,6 @@ export class CardanoAssetExtensions {
   /**
    * Convert hex string to Uint8Array
    */
-  private hexToUint8Array(hex: string): Uint8Array {
-    const bytes = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < hex.length; i += 2) {
-      bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
-    }
-    return bytes;
-  }
 
   /**
    * Resolve IPFS URLs to HTTP gateways
@@ -469,7 +463,7 @@ export class CardanoAssetExtensions {
       
       if (typeof publicKey.value === 'string') {
         // If it's a hex string, convert to bytes
-        publicKeyBytes = this.hexToUint8Array(publicKey.value);
+        publicKeyBytes = CardanoCrypto.hexToUint8Array(publicKey.value);
       } else {
         // If it's already bytes, use directly
         publicKeyBytes = new Uint8Array(publicKey.value);

@@ -14,10 +14,8 @@ module.exports = {
   transformIgnorePatterns: [
     'node_modules/(?!(@noble|@scure)/)'
   ],
-  // Mock WASM and browser-only modules
-  moduleNameMapper: {
-    '^@dcspark/cardano-multiplatform-lib-browser$': '<rootDir>/../src/__tests__/mocks/cardano-wasm-mock.ts'
-  },
+  // Mock WASM and browser-only modules (removed unused mappings)
+  moduleNameMapper: {},
   // Set NODE_ENV to test to use mock crypto implementations
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   // Prevent worker process leaks

@@ -86,7 +86,7 @@ export class CardanoCrypto {
   /**
    * Derive Cardano root keypair from mnemonic using pure JavaScript BIP32-Ed25519
    */
-  static async deriveRootKeypair(mnemonic: string[], _passphrase: string = ''): Promise<Uint8Array> {
+  static async deriveRootKeypair(mnemonic: string[], passphrase: string = ''): Promise<Uint8Array> {
     try {
       const mnemonicStr = mnemonic.join(' ');
       
@@ -94,12 +94,13 @@ export class CardanoCrypto {
         throw new Error('Invalid mnemonic');
       }
 
-      // Convert mnemonic to entropy for BIP32-Ed25519
-      const entropyHex = mnemonicToEntropy(mnemonicStr);
-      const entropyUint8 = new Uint8Array(Buffer.from(entropyHex, 'hex'));
+      // CORRECT: Convert mnemonic to seed using PBKDF2 (Cardano standard)
+      const seed = await mnemonicToSeed(mnemonicStr, passphrase);
+      const seedUint8 = new Uint8Array(seed);
       
       // Use pure JS BIP32-Ed25519 for Cardano-specific key derivation
-      const rootKey = await Bip32PrivateKey.fromEntropy(Buffer.from(entropyUint8));
+      // For BIP32-Ed25519, we use the first 32 bytes of the 64-byte seed as entropy
+      const rootKey = await Bip32PrivateKey.fromEntropy(Buffer.from(seedUint8.slice(0, 32)));
       
       // Get the extended private key bytes (96 bytes) and derive public key
       const privateKeyExtended = rootKey.toBytes(); // 96 bytes: 64 extended + 32 chain code
@@ -164,10 +165,11 @@ export class CardanoCrypto {
   static async derivePaymentKeypair(
     mnemonic: string[], 
     accountIndex: number = 0, 
-    addressIndex: number = 0
+    addressIndex: number = 0,
+    passphrase: string = ''
   ): Promise<Uint8Array> {
     try {
-      const rootKeypair = await this.deriveRootKeypair(mnemonic);
+      const rootKeypair = await this.deriveRootKeypair(mnemonic, passphrase);
       const paymentPath = `m/${CIP1852_DERIVATION.PURPOSE}'/${CIP1852_DERIVATION.COIN_TYPE}'/${accountIndex}'/0/${addressIndex}`;
       return await this.deriveChildKeypair(rootKeypair, paymentPath);
     } catch (error) {
@@ -181,10 +183,11 @@ export class CardanoCrypto {
    */
   static async deriveStakeKeypair(
     mnemonic: string[], 
-    accountIndex: number = 0
+    accountIndex: number = 0,
+    passphrase: string = ''
   ): Promise<Uint8Array> {
     try {
-      const rootKeypair = await this.deriveRootKeypair(mnemonic);
+      const rootKeypair = await this.deriveRootKeypair(mnemonic, passphrase);
       const stakePath = `m/${CIP1852_DERIVATION.PURPOSE}'/${CIP1852_DERIVATION.COIN_TYPE}'/${accountIndex}'/${CIP1852_DERIVATION.STAKE_KEY}/0`;
       return await this.deriveChildKeypair(rootKeypair, stakePath);
     } catch (error) {
@@ -549,14 +552,10 @@ export class CardanoCrypto {
         const publicKey = this.getPublicKey(privateKeyUint8);
         return this.uint8ArrayToBuffer(publicKey);
       } else if (privateKeyUint8.length === 32) {
-        // For a 32-byte private key, create a deterministic public key using Blake2b
-        // This ensures we get a valid 32-byte public key that's deterministic from the private key
-        const deterministicSeed = new Uint8Array(64);
-        deterministicSeed.set(privateKeyUint8); // First 32 bytes: private key
-        deterministicSeed.set(privateKeyUint8, 32); // Second 32 bytes: private key again for entropy
-        
-        const publicKey = this.hashBlake2b(deterministicSeed, 32);
-        return this.uint8ArrayToBuffer(publicKey);
+        // For a 32-byte private key, we cannot properly derive the Ed25519 public key
+        // without the full extended key context. This is a limitation.
+        // Return a warning in development environments.
+        throw new Error('Cannot derive Ed25519 public key from 32-byte private key without extended key context. Use 128-byte keypair format.');
       } else {
         throw new Error(`Invalid private key length: expected 32 bytes or 128 bytes (keypair), got ${privateKeyUint8.length} bytes`);
       }

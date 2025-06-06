@@ -357,7 +357,7 @@ export class CardanoAssetExtensions {
   /**
    * Get NFT collection information
    */
-  async getNFTCollection(_policyId: string): Promise<{
+  async getNFTCollection(policyId: string): Promise<{
     policyId: string;
     name: string;
     description?: string;
@@ -369,9 +369,97 @@ export class CardanoAssetExtensions {
     volume24h?: string;
     assets: NFTMetadata[];
   } | null> {
-    // This would integrate with NFT marketplace APIs
-    // For now, return null
-    return null;
+    try {
+      Logger.debug(`Fetching NFT collection info for policy ${policyId}`);
+      
+      // Validate policy ID format
+      if (!policyId || policyId.length !== 56) {
+        Logger.warn(`Invalid policy ID format: ${policyId}`);
+        return null;
+      }
+      
+      // Get collection metadata from on-chain data
+      const collectionData = await this.getCollectionMetadataFromChain(policyId);
+      
+      if (!collectionData) {
+        Logger.debug(`No collection metadata found for policy ${policyId}`);
+        return null;
+      }
+      
+      return {
+        policyId,
+        ...collectionData
+      };
+    } catch (error) {
+      Logger.error(`Failed to get NFT collection for policy ${policyId}`, error as Error);
+      return null;
+    }
+  }
+
+  /**
+   * Get collection metadata from on-chain sources
+   */
+  private async getCollectionMetadataFromChain(policyId: string): Promise<{
+    name: string;
+    description?: string;
+    website?: string;
+    twitter?: string;
+    discord?: string;
+    totalSupply: number;
+    floorPrice?: string;
+    volume24h?: string;
+    assets: NFTMetadata[];
+  } | null> {
+    try {
+      // Try to get policy assets first
+      const policyAssets = await this.dataService.getAssetsByPolicy(policyId);
+      
+      if (!policyAssets || policyAssets.length === 0) {
+        return null;
+      }
+      
+      // Get metadata for the first asset to extract collection info
+      const firstAsset = policyAssets[0];
+      const metadata = await this.getAssetMetadata(policyId, firstAsset.assetName || '');
+      
+      // Create NFT metadata for collection assets (limit for performance)
+      const assetsToProcess = policyAssets.slice(0, 50); // Limit to first 50
+      const assets: NFTMetadata[] = [];
+      
+      for (const asset of assetsToProcess) {
+        try {
+          const assetMetadata = await this.getAssetMetadata(policyId, asset.assetName || '');
+          if (assetMetadata) {
+            assets.push({
+              policyId,
+              assetName: asset.assetName || '',
+              assetNameHex: asset.assetNameHex || '',
+              fingerprint: asset.fingerprint || this.calculateAssetFingerprint(policyId, Buffer.from(asset.assetName || '', 'utf8').toString('hex')),
+              name: assetMetadata.name || asset.assetName,
+              description: assetMetadata.description || '',
+              image: assetMetadata.image || '',
+              attributes: (assetMetadata as any).attributes || [],
+              rarity: (assetMetadata as any).rarity,
+              mintTxHash: assetMetadata.mintTxHash
+            });
+          }
+        } catch (error) {
+          Logger.debug(`Failed to get metadata for asset ${asset.assetName}`, error as Error);
+          continue;
+        }
+      }
+      
+      return {
+        name: metadata?.name || `Collection ${policyId.slice(0, 8)}...`,
+        description: metadata?.description || `NFT collection with policy ${policyId}`,
+        website: metadata?.url,
+        totalSupply: policyAssets.length,
+        assets
+      };
+    } catch (error) {
+      Logger.error('Failed to get collection metadata from chain', error as Error);
+      return null;
+    }
   }
 
   /**

@@ -39,8 +39,8 @@ interface DataProvider {
  */
 class KoiosProvider implements DataProvider {
   name = "Koios";
-  private static readonly BASE_URL = "https://api.koios.rest/api/v1";
-  private static readonly CORS_PROXY = "https://cors-proxy.airgap.prod.gke.papers.tech/proxy?url=";
+  static readonly BASE_URL = "https://api.koios.rest/api/v1";
+  static readonly CORS_PROXY = "https://cors-proxy.airgap.prod.gke.papers.tech/proxy?url=";
 
   private assembleRequestUrl(url: string): string {
     return `${KoiosProvider.CORS_PROXY}${url}`;
@@ -323,7 +323,7 @@ class CardanoScanProvider implements DataProvider {
  */
 class BlockfrostPublicProvider implements DataProvider {
   name = "Blockfrost Public";
-  private static readonly BASE_URL = "https://cardano-mainnet.blockfrost.io/api/v0";
+  static readonly BASE_URL = "https://cardano-mainnet.blockfrost.io/api/v0";
 
   async getBalance(address: string): Promise<Balance> {
     const response = await axios.get(`${BlockfrostPublicProvider.BASE_URL}/addresses/${address}`);
@@ -569,7 +569,7 @@ export class CardanoDataService {
   }
 
   /**
-   * Enhanced UTXO processing with TyphonJS validation
+   * Enhanced UTXO processing with TyphonJS validation and complex asset support
    */
   async getValidatedUtxos(
     address: string,
@@ -581,12 +581,21 @@ export class CardanoDataService {
     assets?: any[];
     isValid: boolean;
     minUtxo?: string;
+    hasNativeTokens?: boolean;
+    tokenCount?: number;
+    estimatedSize?: number;
+    metadata?: any;
   }>> {
     const utxos = await this.getUtxos(address);
     
     if (!protocolParams) {
       // Return UTXOs without validation if no protocol params available
-      return utxos.map(utxo => ({ ...utxo, isValid: true }));
+      return utxos.map(utxo => ({ 
+        ...utxo, 
+        isValid: true,
+        hasNativeTokens: Boolean(utxo.assets && utxo.assets.length > 0),
+        tokenCount: utxo.assets?.length || 0
+      }));
     }
 
     const validatedUtxos = [];
@@ -602,20 +611,56 @@ export class CardanoDataService {
         if (!addressObj) {
           throw new Error('Invalid address format');
         }
+
+        // Enhanced native token processing
+        const hasNativeTokens = Boolean(utxo.assets && utxo.assets.length > 0);
+        const tokenCount = utxo.assets?.length || 0;
+        
+        // Process native tokens with proper validation
+        const processedTokens = utxo.assets ? utxo.assets.map((asset: any) => {
+          const policyId = asset.unit ? asset.unit.substring(0, 56) : '';
+          const assetNameHex = asset.unit ? asset.unit.substring(56) : '';
+          
+          // Validate policy ID format (56 hex characters)
+          if (policyId && policyId.length !== 56) {
+            Logger.warn(`Invalid policy ID length: ${policyId}`);
+          }
+          
+          // Validate asset name hex encoding
+          try {
+            if (assetNameHex) {
+              Buffer.from(assetNameHex, 'hex');
+            }
+          } catch (error) {
+            Logger.warn(`Invalid asset name hex: ${assetNameHex}`);
+          }
+
+          return {
+            policyId,
+            assetName: assetNameHex,
+            amount: new BigNumber(asset.quantity || '1')
+          };
+        }) : [];
         
         const outputForCalculation = {
           address: addressObj,
           amount: new BigNumber(amount.toString()),
-          tokens: utxo.assets ? utxo.assets.map((asset: any) => ({
-            policyId: asset.unit ? asset.unit.substring(0, 56) : '',
-            assetName: asset.unit ? asset.unit.substring(56) : '',
-            amount: new BigNumber(asset.quantity || '1')
-          })) : []
+          tokens: processedTokens
         };
         
-        const minUtxo = TyphonUtils.calculateMinUtxoAmountBabbage(
+        // Calculate minimum UTXO with enhanced Babbage-era rules
+        const minUtxo = this.calculateMinUtxoWithComplexAssets(
           outputForCalculation,
-          new BigNumber(protocolParams.coinsPerUtxoWord)
+          protocolParams,
+          hasNativeTokens,
+          tokenCount
+        );
+        
+        // Estimate UTXO size for fee calculation
+        const estimatedSize = this.estimateUtxoSize(
+          outputForCalculation,
+          hasNativeTokens,
+          tokenCount
         );
         
         // Convert BigNumber to bigint for comparison
@@ -625,7 +670,10 @@ export class CardanoDataService {
         validatedUtxos.push({
           ...utxo,
           isValid,
-          minUtxo: (Number(minUtxoBigInt) / 1_000_000).toString() // Convert back to ADA
+          minUtxo: (Number(minUtxoBigInt) / 1_000_000).toString(), // Convert back to ADA
+          hasNativeTokens,
+          tokenCount,
+          estimatedSize
         });
       } catch (error) {
         Logger.warn(`UTXO validation failed for ${utxo.txHash}:${utxo.outputIndex}: ${(error as Error).message}`);
@@ -633,12 +681,108 @@ export class CardanoDataService {
         validatedUtxos.push({
           ...utxo,
           isValid: false,
-          minUtxo: '1.0' // Default minimum
+          minUtxo: '1.0', // Default minimum
+          hasNativeTokens: Boolean(utxo.assets && utxo.assets.length > 0),
+          tokenCount: utxo.assets?.length || 0,
+          estimatedSize: 50 // Base UTXO size estimate
         });
       }
     }
     
     return validatedUtxos;
+  }
+
+  /**
+   * Calculate minimum UTXO amount with enhanced support for complex native assets
+   */
+  private calculateMinUtxoWithComplexAssets(
+    output: {
+      address: any;
+      amount: BigNumber;
+      tokens: Array<{ policyId: string; assetName: string; amount: BigNumber }>;
+    },
+    protocolParams: TyphonProtocolParams,
+    hasNativeTokens: boolean,
+    tokenCount: number
+  ): BigNumber {
+    try {
+      // Use TyphonJS calculation as base
+      const baseMinUtxo = TyphonUtils.calculateMinUtxoAmountBabbage(
+        output,
+        new BigNumber(protocolParams.coinsPerUtxoWord)
+      );
+
+      // Apply additional complexity factors for complex native assets
+      let complexityMultiplier = 1.0;
+
+      if (hasNativeTokens) {
+        // Base multiplier for having native tokens
+        complexityMultiplier += 0.1;
+        
+        // Additional multiplier based on token count
+        if (tokenCount > 5) {
+          complexityMultiplier += 0.05 * (tokenCount - 5);
+        }
+        
+        // Additional multiplier for tokens with long asset names
+        const hasLongAssetNames = output.tokens.some(token => 
+          token.assetName && token.assetName.length > 64
+        );
+        if (hasLongAssetNames) {
+          complexityMultiplier += 0.1;
+        }
+        
+        // Cap the multiplier to prevent excessive requirements
+        complexityMultiplier = Math.min(complexityMultiplier, 2.0);
+      }
+
+      return baseMinUtxo.multipliedBy(complexityMultiplier);
+    } catch (error) {
+      Logger.warn(`Enhanced min UTXO calculation failed, using fallback: ${error}`);
+      
+      // Fallback calculation for complex assets
+      const baseAmount = new BigNumber(protocolParams.coinsPerUtxoWord);
+      
+      if (hasNativeTokens) {
+        // Estimate based on token count and complexity
+        const tokenAdjustment = tokenCount * 50000; // 0.05 ADA per token
+        return baseAmount.plus(tokenAdjustment);
+      }
+      
+      return baseAmount;
+    }
+  }
+
+  /**
+   * Estimate UTXO size in bytes for fee calculation
+   */
+  private estimateUtxoSize(
+    output: {
+      address: any;
+      amount: BigNumber;
+      tokens: Array<{ policyId: string; assetName: string; amount: BigNumber }>;
+    },
+    hasNativeTokens: boolean,
+    tokenCount: number
+  ): number {
+    // Base UTXO size (address + amount)
+    let sizeEstimate = 50; // Base size in bytes
+    
+    if (hasNativeTokens) {
+      // Add size for each native token
+      // Policy ID (28 bytes) + Asset Name (variable) + Amount (variable)
+      output.tokens.forEach(token => {
+        sizeEstimate += 28; // Policy ID
+        sizeEstimate += Math.ceil(token.assetName.length / 2); // Asset name hex to bytes
+        sizeEstimate += 8; // Amount (worst case 8 bytes)
+        sizeEstimate += 5; // CBOR encoding overhead
+      });
+      
+      // Add overhead for multi-asset structure
+      sizeEstimate += 10 + tokenCount * 2;
+    }
+    
+    return sizeEstimate;
   }
 
   /**
@@ -660,6 +804,120 @@ export class CardanoDataService {
       priceMem: params.price_mem || 0.0577,
       priceStep: params.price_step || 0.0000721,
     };
+  }
+
+  /**
+   * Get all assets for a specific policy ID
+   */
+  async getAssetsByPolicy(policyId: string): Promise<Array<{
+    assetName: string;
+    assetNameHex: string;
+    fingerprint: string;
+    quantity?: string;
+  }>> {
+    try {
+      Logger.debug(`Fetching assets for policy ${policyId}`);
+      
+      const provider = this.getProvider();
+      
+      if (provider === 'koios') {
+        return await this.getKoiosAssetsByPolicy(policyId);
+      } else {
+        return await this.getBlockfrostAssetsByPolicy(policyId);
+      }
+    } catch (error) {
+      Logger.error(`Failed to get assets for policy ${policyId}`, error as Error);
+      return [];
+    }
+  }
+
+  /**
+   * Get current active provider name
+   */
+  private getProvider(): string {
+    return this.providers[0]?.name.toLowerCase() || 'koios';
+  }
+
+  /**
+   * Create proxied URL for Koios API calls
+   */
+  private createProxiedUrl(baseUrl: string, params?: Record<string, any>): string {
+    const proxiedUrl = `${KoiosProvider.CORS_PROXY}${baseUrl}`;
+    if (params) {
+      const queryString = Object.entries(params).map(([key, value]) => 
+        `${encodeURIComponent(key)}=${encodeURIComponent(JSON.stringify(value))}`
+      ).join('&');
+      return `${proxiedUrl}?${queryString}`;
+    }
+    return proxiedUrl;
+  }
+
+  /**
+   * Get policy assets from Koios API
+   */
+  private async getKoiosAssetsByPolicy(policyId: string): Promise<Array<{
+    assetName: string;
+    assetNameHex: string;
+    fingerprint: string;
+    quantity?: string;
+  }>> {
+    try {
+      const targetUrl = `${KoiosProvider.BASE_URL}/policy_asset_info`;
+      const proxiedUrl = `${KoiosProvider.CORS_PROXY}${targetUrl}`;
+      
+      const response = await axios.post(proxiedUrl, {
+        _policy_id: policyId
+      }, {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (response.status !== 200) {
+        return [];
+      }
+      
+      const assets = response.data as any[];
+      
+      return assets.map(asset => ({
+        assetName: asset.asset_name || '',
+        assetNameHex: asset.asset_name_hex || asset.asset_name || '',
+        fingerprint: asset.fingerprint || '',
+        quantity: asset.total_supply || asset.quantity
+      }));
+    } catch (error) {
+      Logger.error('Failed to get Koios policy assets', error as Error);
+      return [];
+    }
+  }
+
+  /**
+   * Get policy assets from Blockfrost API
+   */
+  private async getBlockfrostAssetsByPolicy(policyId: string): Promise<Array<{
+    assetName: string;
+    assetNameHex: string;
+    fingerprint: string;
+    quantity?: string;
+  }>> {
+    try {
+      // Use public Blockfrost endpoint (no API key required)
+      const response = await axios.get(`${BlockfrostPublicProvider.BASE_URL}/assets/policy/${policyId}`);
+      
+      if (response.status !== 200) {
+        return [];
+      }
+      
+      const assets = response.data as any[];
+      
+      return assets.map(asset => ({
+        assetName: asset.asset_name || '',
+        assetNameHex: asset.asset_name || '',
+        fingerprint: asset.fingerprint || '',
+        quantity: asset.quantity
+      }));
+    } catch (error) {
+      Logger.error('Failed to get Blockfrost policy assets', error as Error);
+      return [];
+    }
   }
 
   /**

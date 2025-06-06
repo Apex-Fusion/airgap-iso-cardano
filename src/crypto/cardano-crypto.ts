@@ -17,10 +17,12 @@
 import { generateMnemonic, mnemonicToSeed, validateMnemonic, entropyToMnemonic, mnemonicToEntropy } from 'bip39';
 import { BLAKE2b } from '@stablelib/blake2b';
 import { SHA256 } from '@stablelib/sha256';
+import { Logger } from '../utils';
 import { Buffer } from 'buffer';
 import Bip32PrivateKey from '@stricahq/bip32ed25519/dist/Bip32PrivateKey';
 import PublicKey from '@stricahq/bip32ed25519/dist/PublicKey';
 import { crypto as TyphonCrypto } from '@stricahq/typhonjs';
+import * as CBOR from 'cbor-js';
 import { CryptoOperationError, ErrorCode } from '../errors/error-types';
 import { HARDENED_OFFSET, CIP1852_DERIVATION } from '../types/domain';
 
@@ -284,6 +286,194 @@ export class CardanoCrypto {
       return await this.deriveChildKeypair(rootKeypair, stakePath);
     } catch (error) {
       throw new CryptoOperationError(ErrorCode.KEY_DERIVATION_FAILED, `Failed to derive stake keypair: ${error}`);
+    }
+  }
+
+  /**
+   * Derive DRep (Delegated Representative) keypair for Conway era governance
+   * 
+   * @implements CIP-105 - Conway Era Key Chains for HD Wallets
+   * @implements CIP-1694 - On-Chain Decentralized Governance  
+   * @param mnemonic BIP39 mnemonic words
+   * @param accountIndex Account index (usually 0)
+   * @param addressIndex Address index for multiple DRep keys (usually 0)
+   * @param passphrase Optional passphrase
+   * @returns 128-byte DRep keypair for governance voting
+   */
+  static async deriveDRepKeypair(
+    mnemonic: string[], 
+    accountIndex: number = 0,
+    addressIndex: number = 0,
+    passphrase: string = ''
+  ): Promise<Uint8Array> {
+    try {
+      const rootKeypair = await this.deriveRootKeypair(mnemonic, passphrase);
+      // CIP-105: DRep key path - m/1852'/1815'/account'/3/address_index (role=3)
+      const drepPath = `m/${CIP1852_DERIVATION.PURPOSE}'/${CIP1852_DERIVATION.COIN_TYPE}'/${accountIndex}'/3/${addressIndex}`;
+      return await this.deriveChildKeypair(rootKeypair, drepPath);
+    } catch (error) {
+      throw new CryptoOperationError(ErrorCode.KEY_DERIVATION_FAILED, `Failed to derive DRep keypair: ${error}`);
+    }
+  }
+
+  /**
+   * Derive Constitutional Committee Cold keypair for Conway era governance
+   * 
+   * @implements CIP-105 - Conway Era Key Chains for HD Wallets
+   * @implements CIP-1694 - Constitutional Committee functionality
+   * @param mnemonic BIP39 mnemonic words
+   * @param accountIndex Account index (usually 0)
+   * @param addressIndex Address index for multiple CC keys (usually 0)
+   * @param passphrase Optional passphrase
+   * @returns 128-byte Constitutional Committee Cold keypair
+   */
+  static async deriveConstitutionalCommitteeColdKeypair(
+    mnemonic: string[], 
+    accountIndex: number = 0,
+    addressIndex: number = 0,
+    passphrase: string = ''
+  ): Promise<Uint8Array> {
+    try {
+      const rootKeypair = await this.deriveRootKeypair(mnemonic, passphrase);
+      // CIP-105: CC Cold key path - m/1852'/1815'/account'/4/address_index (role=4)
+      const ccColdPath = `m/${CIP1852_DERIVATION.PURPOSE}'/${CIP1852_DERIVATION.COIN_TYPE}'/${accountIndex}'/4/${addressIndex}`;
+      return await this.deriveChildKeypair(rootKeypair, ccColdPath);
+    } catch (error) {
+      throw new CryptoOperationError(ErrorCode.KEY_DERIVATION_FAILED, `Failed to derive CC Cold keypair: ${error}`);
+    }
+  }
+
+  /**
+   * Derive Constitutional Committee Hot keypair for Conway era governance
+   * 
+   * @implements CIP-105 - Conway Era Key Chains for HD Wallets
+   * @implements CIP-1694 - Constitutional Committee functionality
+   * @param mnemonic BIP39 mnemonic words
+   * @param accountIndex Account index (usually 0)
+   * @param addressIndex Address index for multiple CC keys (usually 0)
+   * @param passphrase Optional passphrase
+   * @returns 128-byte Constitutional Committee Hot keypair
+   */
+  static async deriveConstitutionalCommitteeHotKeypair(
+    mnemonic: string[], 
+    accountIndex: number = 0,
+    addressIndex: number = 0,
+    passphrase: string = ''
+  ): Promise<Uint8Array> {
+    try {
+      const rootKeypair = await this.deriveRootKeypair(mnemonic, passphrase);
+      // CIP-105: CC Hot key path - m/1852'/1815'/account'/5/address_index (role=5)
+      const ccHotPath = `m/${CIP1852_DERIVATION.PURPOSE}'/${CIP1852_DERIVATION.COIN_TYPE}'/${accountIndex}'/5/${addressIndex}`;
+      return await this.deriveChildKeypair(rootKeypair, ccHotPath);
+    } catch (error) {
+      throw new CryptoOperationError(ErrorCode.KEY_DERIVATION_FAILED, `Failed to derive CC Hot keypair: ${error}`);
+    }
+  }
+
+  /**
+   * Derive Catalyst voting keypair for Project Catalyst governance
+   * 
+   * @implements CIP-36 - Catalyst Registration Transaction Metadata Format
+   * @implements CIP-1694 - Voting key derivation path
+   * @param mnemonic BIP39 mnemonic words
+   * @param accountIndex Account index (usually 0)
+   * @param addressIndex Address index for voting keys (usually 0)
+   * @param passphrase Optional passphrase
+   * @returns 128-byte Catalyst voting keypair
+   */
+  static async deriveCatalystVotingKeypair(
+    mnemonic: string[], 
+    accountIndex: number = 0,
+    addressIndex: number = 0,
+    passphrase: string = ''
+  ): Promise<Uint8Array> {
+    try {
+      const rootKeypair = await this.deriveRootKeypair(mnemonic, passphrase);
+      // CIP-36: Catalyst voting key path - m/1694'/1815'/account'/0/address_index
+      const catalystPath = `m/1694'/${CIP1852_DERIVATION.COIN_TYPE}'/${accountIndex}'/0/${addressIndex}`;
+      return await this.deriveChildKeypair(rootKeypair, catalystPath);
+    } catch (error) {
+      throw new CryptoOperationError(ErrorCode.KEY_DERIVATION_FAILED, `Failed to derive Catalyst voting keypair: ${error}`);
+    }
+  }
+
+  /**
+   * Derive multi-signature wallet keys for organizational delegation
+   * 
+   * @implements CIP-1854 - Multi-signatures HD Wallets
+   * @param mnemonic BIP39 mnemonic words
+   * @param accountIndex Account index (usually 0)
+   * @param role Derivation role (0=external, 1=internal, 2=staking)
+   * @param addressIndex Address index
+   * @param passphrase Optional passphrase
+   * @returns 128-byte multi-signature keypair
+   */
+  static async deriveMultiSigKeypair(
+    mnemonic: string[], 
+    accountIndex: number = 0,
+    role: number = 0,
+    addressIndex: number = 0,
+    passphrase: string = ''
+  ): Promise<Uint8Array> {
+    try {
+      const rootKeypair = await this.deriveRootKeypair(mnemonic, passphrase);
+      // CIP-1854: Multi-sig key path - m/1854'/1815'/account'/role/address_index
+      const multiSigPath = `m/1854'/${CIP1852_DERIVATION.COIN_TYPE}'/${accountIndex}'/${role}/${addressIndex}`;
+      return await this.deriveChildKeypair(rootKeypair, multiSigPath);
+    } catch (error) {
+      throw new CryptoOperationError(ErrorCode.KEY_DERIVATION_FAILED, `Failed to derive multi-sig keypair: ${error}`);
+    }
+  }
+
+  /**
+   * Derive stake pool cold keys for pool operators
+   * 
+   * @implements CIP-1853 - Stake Pool Cold Keys
+   * @param mnemonic BIP39 mnemonic words
+   * @param accountIndex Account index (usually 0)
+   * @param addressIndex Address index for pool keys (usually 0)
+   * @param passphrase Optional passphrase
+   * @returns 128-byte stake pool cold keypair
+   */
+  static async deriveStakePoolColdKeypair(
+    mnemonic: string[], 
+    accountIndex: number = 0,
+    addressIndex: number = 0,
+    passphrase: string = ''
+  ): Promise<Uint8Array> {
+    try {
+      const rootKeypair = await this.deriveRootKeypair(mnemonic, passphrase);
+      // CIP-1853: Pool cold key path - m/1853'/1815'/account'/0/address_index
+      const poolColdPath = `m/1853'/${CIP1852_DERIVATION.COIN_TYPE}'/${accountIndex}'/0/${addressIndex}`;
+      return await this.deriveChildKeypair(rootKeypair, poolColdPath);
+    } catch (error) {
+      throw new CryptoOperationError(ErrorCode.KEY_DERIVATION_FAILED, `Failed to derive pool cold keypair: ${error}`);
+    }
+  }
+
+  /**
+   * Derive token policy keys for native asset governance
+   * 
+   * @implements CIP-1855 - Forging Policy Keys
+   * @param mnemonic BIP39 mnemonic words
+   * @param accountIndex Account index (usually 0)
+   * @param addressIndex Address index for policy keys (usually 0)
+   * @param passphrase Optional passphrase
+   * @returns 128-byte policy keypair
+   */
+  static async derivePolicyKeypair(
+    mnemonic: string[], 
+    accountIndex: number = 0,
+    addressIndex: number = 0,
+    passphrase: string = ''
+  ): Promise<Uint8Array> {
+    try {
+      const rootKeypair = await this.deriveRootKeypair(mnemonic, passphrase);
+      // CIP-1855: Policy key path - m/1855'/1815'/account'/0/address_index
+      const policyPath = `m/1855'/${CIP1852_DERIVATION.COIN_TYPE}'/${accountIndex}'/0/${addressIndex}`;
+      return await this.deriveChildKeypair(rootKeypair, policyPath);
+    } catch (error) {
+      throw new CryptoOperationError(ErrorCode.KEY_DERIVATION_FAILED, `Failed to derive policy keypair: ${error}`);
     }
   }
 
@@ -630,6 +820,152 @@ export class CardanoCrypto {
         ErrorCode.ADDRESS_GENERATION_FAILED, 
         `Failed to derive address from public key: ${error}`
       );
+    }
+  }
+
+  /**
+   * Sign arbitrary message using CIP-8 message signing standard
+   * 
+   * @implements CIP-8 - Message Signing with COSE-Sign1 format
+   * @param message Message to sign (string or Uint8Array)
+   * @param keypair 128-byte keypair for signing
+   * @param address Associated Cardano address for verification
+   * @returns COSE-Sign1 signature structure
+   */
+  static async signMessage(
+    message: string | Uint8Array,
+    keypair: Uint8Array,
+    address: string
+  ): Promise<{
+    signature: Uint8Array;
+    key: Uint8Array;
+    address: string;
+    protected: any;
+    unprotected: any;
+  }> {
+    try {
+      if (keypair.length !== 128) {
+        throw new Error(`Invalid keypair length: expected 128 bytes, got ${keypair.length} bytes`);
+      }
+
+      // Convert message to bytes
+      const messageBytes = typeof message === 'string' 
+        ? new TextEncoder().encode(message)
+        : message;
+
+      // CIP-8: Create COSE-Sign1 structure
+      // Protected headers include algorithm and address
+      const protectedHeaders = {
+        1: -8, // Algorithm: EdDSA
+        4: new TextEncoder().encode(address) // Key ID: Cardano address
+      };
+
+      // Unprotected headers (empty for CIP-8)
+      const unprotectedHeaders = {};
+
+      // Encode protected headers using CBOR
+      const protectedBytes = new Uint8Array(CBOR.encode(protectedHeaders));
+
+      // Create Sig_structure for COSE-Sign1
+      // Sig_structure = [
+      //   "Signature1",     // context
+      //   protected,        // protected headers
+      //   external_aad,     // external additional authenticated data (empty)
+      //   payload           // payload
+      // ]
+      const sigStructure = [
+        "Signature1",
+        new Uint8Array(protectedBytes),
+        new Uint8Array(0), // empty external_aad
+        messageBytes
+      ];
+
+      const sigStructureBytes = new Uint8Array(CBOR.encode(sigStructure));
+      const sigStructureHash = this.hashBlake2b(new Uint8Array(sigStructureBytes), 32);
+
+      // Sign the hash
+      const signature = await this.signWithKeypair(sigStructureHash, keypair);
+      const publicKey = this.getPublicKey(keypair);
+
+      Logger.debug('CIP-8 message signature created', {
+        messageLength: messageBytes.length,
+        address,
+        signatureLength: signature.length
+      });
+
+      return {
+        signature,
+        key: publicKey,
+        address,
+        protected: protectedHeaders,
+        unprotected: unprotectedHeaders
+      };
+    } catch (error) {
+      throw new CryptoOperationError(
+        ErrorCode.SIGNATURE_FAILED,
+        `Failed to sign message with CIP-8: ${(error as Error).message}`
+      );
+    }
+  }
+
+  /**
+   * Verify CIP-8 message signature
+   * 
+   * @implements CIP-8 - Message signature verification
+   * @param message Original message
+   * @param signatureData CIP-8 signature structure
+   * @returns Verification result
+   */
+  static async verifyMessageSignature(
+    message: string | Uint8Array,
+    signatureData: {
+      signature: Uint8Array;
+      key: Uint8Array;
+      address: string;
+      protected: any;
+      unprotected: any;
+    }
+  ): Promise<boolean> {
+    try {
+      // Convert message to bytes
+      const messageBytes = typeof message === 'string' 
+        ? new TextEncoder().encode(message)
+        : message;
+
+      // Reconstruct the signed structure using CBOR
+      const protectedBytes = new Uint8Array(CBOR.encode(signatureData.protected));
+
+      const sigStructure = [
+        "Signature1",
+        new Uint8Array(protectedBytes),
+        new Uint8Array(0), // empty external_aad
+        messageBytes
+      ];
+
+      const sigStructureBytes = new Uint8Array(CBOR.encode(sigStructure));
+      const sigStructureHash = this.hashBlake2b(new Uint8Array(sigStructureBytes), 32);
+
+      // Verify the signature
+      const isValid = await this.verifySignature(
+        signatureData.signature,
+        sigStructureHash,
+        signatureData.key
+      );
+
+      // Verify the public key matches the address
+      const derivedAddress = await this.deriveAddressFromPublicKey(signatureData.key);
+      const addressMatches = derivedAddress === signatureData.address;
+
+      Logger.debug('CIP-8 message verification completed', {
+        signatureValid: isValid,
+        addressMatches,
+        address: signatureData.address
+      });
+
+      return isValid && addressMatches;
+    } catch (error) {
+      Logger.error('Failed to verify CIP-8 message signature', error as Error);
+      return false;
     }
   }
 

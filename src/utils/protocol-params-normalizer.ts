@@ -183,6 +183,19 @@ export class ProtocolParamsNormalizer {
             continue;
           }
           
+          // Validate that value is positive (except for specific cases)
+          if (numValue.isLessThanOrEqualTo(0)) {
+            Logger.warn(`Non-positive value found for ${fieldName}: ${value}, using default`);
+            continue;
+          }
+          
+          // Special validation for stake key deposit (must be at least 1 ADA)
+          if ((fieldName === 'key_deposit' || fieldName === 'keyDeposit' || fieldName === 'stakeKeyDeposit') && 
+              numValue.isLessThan(1000000)) {
+            Logger.warn(`Stake key deposit too low for ${fieldName}: ${value} lovelace (minimum 1 ADA = 1,000,000 lovelace), using default`);
+            continue;
+          }
+          
           return numValue;
         } catch (error) {
           Logger.warn(`Invalid BigNumber value for ${fieldName}: ${value}`);

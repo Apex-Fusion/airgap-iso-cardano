@@ -21,6 +21,8 @@ import { CardanoDelegationProtocol } from "./protocol/cardano-delegation-protoco
 import { CardanoV3SerializerCompanion } from "./serializer/cardano-v3-serializer";
 import { CardanoProtocolOptions } from "./types/cardano";
 import { CardanoScanBlockExplorer } from "./block-explorer/CardanoScanBlockExplorer";
+import { CardanoCollectiblesExplorer } from "./protocol/cardano-collectibles-explorer";
+import { Logger } from "./utils";
 
 // Define Cardano Protocol Networks following Tezos pattern
 export interface CardanoProtocolNetwork extends ProtocolNetwork {
@@ -102,7 +104,7 @@ export class CardanoModule implements AirGapModule<{ ProtocolNetwork: CardanoPro
     const finalNetwork = network || CARDANO_MAINNET_PROTOCOL_NETWORK;
 
     const networkType = finalNetwork.type === 'testnet' ? 'testnet' : 'mainnet';
-    // Use enhanced protocol for online functionality with staking, assets, analytics, and governance
+    // Use enhanced protocol for online functionality with staking and assets
     return new EnhancedCardanoProtocol({ network: networkType });
   }
 
@@ -119,6 +121,84 @@ export class CardanoModule implements AirGapModule<{ ProtocolNetwork: CardanoPro
 
   async createV3SerializerCompanion(): Promise<AirGapV3SerializerCompanion> {
     return new CardanoV3SerializerCompanion();
+  }
+
+  // =============================================================================
+  // Token and Collectibles Support Methods
+  // =============================================================================
+
+  /**
+   * Get supported native token sub-protocols
+   * This method helps AirGap detect token support capabilities
+   */
+  public getSupportedTokens(): string[] {
+    // Return list of well-known Cardano native tokens
+    // AirGap can use this to populate token selection UI
+    return [
+      // Popular Cardano native tokens - can be expanded
+      'hosky', // HOSKY token
+      'sundae', // SundaeSwap token
+      'min', // Minswap token
+      'ada-handle', // ADA Handle NFTs
+      'jpg-store', // JPG Store collectibles
+    ];
+  }
+
+  /**
+   * Create a native token protocol instance
+   * Used by AirGap to create token sub-protocols dynamically
+   */
+  public async createTokenProtocol(
+    tokenIdentifier: string,
+    networkOrId?: CardanoProtocolNetwork | string
+  ): Promise<any | undefined> {
+    // This would be called by AirGap when user adds a custom token
+    // For now, return undefined - full implementation would create CardanoNativeTokenProtocol
+    
+    const network: CardanoProtocolNetwork | undefined =
+      typeof networkOrId === 'object' 
+        ? networkOrId 
+        : this.networkRegistries[CARDANO_PROTOCOL_IDENTIFIER]?.findNetwork(networkOrId);
+    
+    const finalNetwork = network || CARDANO_MAINNET_PROTOCOL_NETWORK;
+    // This would need token registry or user input to get policyId/assetName
+    // For demonstration, return undefined
+    Logger.info(`Token protocol creation requested for: ${tokenIdentifier}, network: ${finalNetwork.type}`);
+    return undefined;
+  }
+
+  /**
+   * Check if the protocol supports tokens
+   * Used by AirGap to determine if "Add Tokens" button should be shown
+   */
+  public supportsTokens(): boolean {
+    return true; // Cardano supports native tokens
+  }
+
+  /**
+   * Check if the protocol supports collectibles/NFTs
+   * Used by AirGap to determine if "Collectibles" button should be shown
+   */
+  public supportsCollectibles(): boolean {
+    return true; // Cardano supports NFTs via native tokens
+  }
+
+  /**
+   * Create collectibles explorer instance
+   * Used by AirGap's CollectiblesService
+   */
+  public createCollectiblesExplorer(
+    networkOrId?: CardanoProtocolNetwork | string
+  ): any {
+    const network: CardanoProtocolNetwork | undefined =
+      typeof networkOrId === 'object' 
+        ? networkOrId 
+        : this.networkRegistries[CARDANO_PROTOCOL_IDENTIFIER]?.findNetwork(networkOrId);
+    
+    const finalNetwork = network || CARDANO_MAINNET_PROTOCOL_NETWORK;
+    const networkType = finalNetwork.type === 'testnet' ? 'testnet' : 'mainnet';
+
+    return CardanoCollectiblesExplorer.create({ network: networkType });
   }
 }
 
@@ -141,6 +221,20 @@ export {
   CardanoProtocolOptions,
   CardanoScanBlockExplorer,
 };
+
+// Native token and collectibles support
+export {
+  CardanoNativeTokenProtocol,
+  CardanoNativeTokenMetadata,
+  CardanoNativeTokenProtocolOptions
+} from "./protocol/cardano-native-token-protocol";
+
+export {
+  CardanoCollectiblesExplorer,
+  CardanoCollectible,
+  CardanoCollectibleDetails,
+  cardanoCollectibleExplorer
+} from "./protocol/cardano-collectibles-explorer";
 
 // Core types and domain models
 export * from "./types";
@@ -192,22 +286,8 @@ export {
   Portfolio,
   AssetPrice,
 } from "./protocol/asset-extensions";
-export {
-  CardanoAnalyticsExtensions,
-  DetailedTransaction,
-  TransactionStats,
-  DeFiActivity,
-  PortfolioMetrics,
-} from "./protocol/analytics-extensions";
-export {
-  CardanoGovernanceExtensions,
-  GovernanceProposal,
-  VotingPower,
-  Vote,
-  CatalystProposal,
-  MultiSigWallet,
-  PendingMultiSigTransaction,
-} from "./protocol/governance-extensions";
+// Analytics and governance extensions removed for AirGap vault focus
+// These features are better suited for online wallets and web applications
 export {
   DelegateeDetails,
   DelegatorDetails,

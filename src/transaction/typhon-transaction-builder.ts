@@ -55,7 +55,98 @@ export class TyphonTransactionBuilder {
   }
 
   /**
-   * Build a transaction using TyphonJS Transaction class
+   * Build a transaction using TyphonJS automatic UTXO selection
+   * TyphonJS Transaction.paymentTransaction() handles optimal UTXO selection
+   */
+  async buildTransactionWithAutoSelection(
+    availableUtxos: UTXO[],
+    buildRequest: TransactionBuildRequest
+  ): Promise<BuiltTransaction> {
+    try {
+      Logger.debug('Building transaction with TyphonJS automatic UTXO selection', {
+        outputCount: buildRequest.outputs.length,
+        availableUtxoCount: availableUtxos.length,
+      });
+
+      // Validate inputs
+      this.validateBuildRequest(buildRequest);
+      this.validateUtxos(availableUtxos);
+
+      // Convert available UTXOs to TyphonJS Input format
+      const typhonInputs = this.convertUtxosToInputs(availableUtxos);
+      
+      // Convert outputs to TyphonJS format
+      const typhonOutputs = this.convertOutputsToTyphon(buildRequest.outputs);
+      
+      // Convert change address to TyphonJS format
+      const changeAddress = TyphonUtils.getAddressFromString(buildRequest.changeAddress);
+      if (!changeAddress) {
+        throw new ValidationError(ErrorCode.INVALID_ADDRESS, `Invalid change address: ${buildRequest.changeAddress}`);
+      }
+
+      // Create TyphonJS Transaction with automatic UTXO selection
+      const tx = new Transaction({ protocolParams: this.protocolParams });
+      
+      // Use TyphonJS paymentTransaction for automatic UTXO selection and fee calculation
+      const paymentConfig: any = {
+        inputs: typhonInputs,  // Available UTXOs for selection
+        outputs: typhonOutputs,
+        changeAddress: changeAddress as TyphonTypes.ShelleyAddress,
+        metadata: buildRequest.metadata ? this.convertMetadataToAuxiliaryData(buildRequest.metadata) : undefined,
+        certificates: buildRequest.certificates || [],
+        withdrawals: buildRequest.withdrawals || []
+      };
+      
+      if (buildRequest.ttl) {
+        paymentConfig.ttl = buildRequest.ttl;
+      }
+      
+      const finalTx = tx.paymentTransaction(paymentConfig);
+
+      const { hash, payload } = finalTx.buildTransaction();
+      
+      // Extract transaction details
+      const finalInputs = finalTx.getInputs();
+      const finalOutputs = finalTx.getOutputs();
+      const calculatedFee = finalTx.getFee();
+      
+      // Find change output (TyphonJS automatically creates change output if needed)
+      const changeOutput = finalOutputs.find(output => 
+        output.address.getBech32() === buildRequest.changeAddress
+      );
+
+      Logger.debug('Transaction built with TyphonJS auto-selection', {
+        selectedInputs: finalInputs.length,
+        outputCount: finalOutputs.length,
+        fee: calculatedFee.toString(),
+        hasChange: !!changeOutput
+      });
+
+      const builtTransaction: BuiltTransaction = {
+        transaction: finalTx,
+        transactionCbor: payload,
+        transactionHash: hash,
+        fee: calculatedFee,
+        inputs: finalInputs,
+        outputs: finalOutputs,
+        changeOutput,
+        metadata: buildRequest.metadata ? this.convertMetadataToAuxiliaryData(buildRequest.metadata) : undefined
+      };
+
+      return builtTransaction;
+    } catch (error) {
+      Logger.error('TyphonJS auto-selection transaction build failed', error as Error);
+      throw new TransactionBuildError(
+        ErrorCode.TRANSACTION_BUILD_FAILED,
+        `Failed to build transaction with TyphonJS auto-selection: ${(error as Error).message}`,
+        { outputCount: buildRequest.outputs.length, inputCount: availableUtxos.length }
+      );
+    }
+  }
+
+  /**
+   * Build a transaction using pre-selected UTXOs (legacy method for compatibility)
+   * Use buildTransactionWithAutoSelection() for optimal UTXO selection
    */
   async buildTransaction(
     availableUtxos: UTXO[],
@@ -215,7 +306,62 @@ export class TyphonTransactionBuilder {
   }
 
   /**
-   * Build a staking transaction
+   * Build a staking transaction with automatic UTXO selection
+   */
+  async buildStakingTransactionWithAutoSelection(
+    availableUtxos: UTXO[],
+    certificates: TyphonTypes.Certificate[],
+    changeAddress: string,
+    withdrawals?: TyphonTypes.Withdrawal[],
+    ttl?: number
+  ): Promise<BuiltTransaction> {
+    const typhonInputs = this.convertUtxosToInputs(availableUtxos);
+    const typhonChangeAddress = TyphonUtils.getAddressFromString(changeAddress);
+    
+    if (!typhonChangeAddress) {
+      throw new ValidationError(ErrorCode.INVALID_ADDRESS, 'Invalid change address');
+    }
+
+    // Use TyphonJS paymentTransaction for automatic UTXO selection in staking transactions
+    const tx = new Transaction({ protocolParams: this.protocolParams });
+    const stakingConfig: any = {
+      inputs: typhonInputs,
+      outputs: [], // No payment outputs for pure staking transactions
+      changeAddress: typhonChangeAddress as TyphonTypes.ShelleyAddress,
+      certificates,
+      withdrawals: withdrawals || []
+    };
+    
+    if (ttl) {
+      stakingConfig.ttl = ttl;
+    }
+    
+    const finalTx = tx.paymentTransaction(stakingConfig);
+
+    const { hash, payload } = finalTx.buildTransaction();
+
+    Logger.debug('Staking transaction built with TyphonJS auto-selection', {
+      selectedInputs: finalTx.getInputs().length,
+      certificates: certificates.length,
+      withdrawals: withdrawals?.length || 0,
+      fee: finalTx.getFee().toString()
+    });
+
+    return {
+      transaction: finalTx,
+      transactionCbor: payload,
+      transactionHash: hash,
+      fee: finalTx.getFee(),
+      inputs: finalTx.getInputs(),
+      outputs: finalTx.getOutputs(),
+      changeOutput: finalTx.getOutputs().find(output => 
+        output.address.getBech32() === changeAddress
+      )
+    };
+  }
+
+  /**
+   * Build a staking transaction (legacy method for compatibility)
    */
   async buildStakingTransaction(
     availableUtxos: UTXO[],
@@ -314,46 +460,63 @@ export class TyphonTransactionBuilder {
   }
 
   /**
-   * Validate minimum UTXO amount using TyphonJS utilities
+   * Validate minimum UTXO amount using standardized TyphonJS Babbage calculation
    */
   private validateMinUtxoAmount(amount: BigNumber, tokens: TyphonTypes.Token[], output: TransactionOutput): void {
     try {
-      // Use TyphonJS min UTXO calculation if available
-      if (TyphonUtils.calculateMinUtxoAmount) {
-        const minUtxo = TyphonUtils.calculateMinUtxoAmount(
-          tokens, 
-          this.protocolParams.lovelacePerUtxoWord
-        );
-        
-        if (amount.isLessThan(minUtxo)) {
-          throw new ValidationError(
-            ErrorCode.INVALID_AMOUNT,
-            `Output amount ${amount.toString()} is below minimum UTXO requirement ${minUtxo.toString()}`,
-            { output: output.address, required: minUtxo.toString(), provided: amount.toString() }
-          );
-        }
-      }
+      const typhonOutput: TyphonTypes.Output = {
+        address: TyphonUtils.getAddressFromString(output.address)!,
+        amount,
+        tokens
+      };
+
+      let minUtxo: BigNumber;
       
-      // Use Babbage era calculation if available
+      // Prioritize Babbage era calculation (current Cardano protocol)
       if (TyphonUtils.calculateMinUtxoAmountBabbage && this.protocolParams.utxoCostPerByte) {
-        const typhonOutput: TyphonTypes.Output = {
-          address: TyphonUtils.getAddressFromString(output.address)!,
-          amount,
-          tokens
-        };
-        
-        const minUtxoBabbage = TyphonUtils.calculateMinUtxoAmountBabbage(
+        minUtxo = TyphonUtils.calculateMinUtxoAmountBabbage(
           typhonOutput,
           this.protocolParams.utxoCostPerByte
         );
         
-        if (amount.isLessThan(minUtxoBabbage)) {
-          throw new ValidationError(
-            ErrorCode.INVALID_AMOUNT,
-            `Output amount ${amount.toString()} is below Babbage minimum UTXO requirement ${minUtxoBabbage.toString()}`,
-            { output: output.address, required: minUtxoBabbage.toString(), provided: amount.toString() }
-          );
-        }
+        Logger.debug('Using TyphonJS Babbage min UTXO calculation', {
+          amount: amount.toString(),
+          minUtxo: minUtxo.toString(),
+          tokenCount: tokens.length
+        });
+      }
+      // Fallback to legacy calculation for compatibility
+      else if (TyphonUtils.calculateMinUtxoAmount && this.protocolParams.lovelacePerUtxoWord) {
+        minUtxo = TyphonUtils.calculateMinUtxoAmount(
+          tokens, 
+          this.protocolParams.lovelacePerUtxoWord
+        );
+        
+        Logger.debug('Using TyphonJS legacy min UTXO calculation', {
+          amount: amount.toString(),
+          minUtxo: minUtxo.toString(),
+          tokenCount: tokens.length
+        });
+      }
+      else {
+        // Should not happen with proper protocol parameters
+        throw new ValidationError(
+          ErrorCode.INVALID_INPUT,
+          'Protocol parameters missing required min UTXO calculation fields'
+        );
+      }
+      
+      if (amount.isLessThan(minUtxo)) {
+        throw new ValidationError(
+          ErrorCode.INVALID_AMOUNT,
+          `Output amount ${amount.toString()} is below minimum UTXO requirement ${minUtxo.toString()}`,
+          { 
+            field: 'amount',
+            value: amount.toString(),
+            required: minUtxo.toString(), 
+            provided: amount.toString()
+          }
+        );
       }
     } catch (error) {
       if (error instanceof ValidationError) {
@@ -680,6 +843,48 @@ export class TyphonTransactionBuilder {
       if (utxo.amount <= 0) {
         throw new ValidationError(ErrorCode.INVALID_AMOUNT, 'UTXO amount must be positive');
       }
+    }
+  }
+
+  /**
+   * Calculate minimum UTXO amount using standardized TyphonJS calculation
+   * Public utility method for external use
+   */
+  calculateMinUtxoAmount(
+    address: string,
+    amount: BigNumber,
+    tokens: TyphonTypes.Token[] = []
+  ): BigNumber {
+    const typhonAddress = TyphonUtils.getAddressFromString(address);
+    if (!typhonAddress) {
+      throw new ValidationError(ErrorCode.INVALID_ADDRESS, `Invalid address: ${address}`);
+    }
+
+    const typhonOutput: TyphonTypes.Output = {
+      address: typhonAddress,
+      amount,
+      tokens
+    };
+
+    // Use standardized Babbage calculation
+    if (TyphonUtils.calculateMinUtxoAmountBabbage && this.protocolParams.utxoCostPerByte) {
+      return TyphonUtils.calculateMinUtxoAmountBabbage(
+        typhonOutput,
+        this.protocolParams.utxoCostPerByte
+      );
+    }
+    // Fallback to legacy calculation
+    else if (TyphonUtils.calculateMinUtxoAmount && this.protocolParams.lovelacePerUtxoWord) {
+      return TyphonUtils.calculateMinUtxoAmount(
+        tokens, 
+        this.protocolParams.lovelacePerUtxoWord
+      );
+    }
+    else {
+      throw new ValidationError(
+        ErrorCode.INVALID_INPUT,
+        'Protocol parameters missing required min UTXO calculation fields'
+      );
     }
   }
 

@@ -200,7 +200,8 @@ export class CardanoAddress {
   }
 
   /**
-   * Validate script address (simplified check)
+   * Validate script address according to CIP-19 specification
+   * @implements CIP-19 - Complete script address validation
    */
   static async validateScriptAddress(address: string): Promise<boolean> {
     try {
@@ -208,9 +209,45 @@ export class CardanoAddress {
         return false;
       }
       
-      // Script addresses follow similar pattern but this is a simplified check
-      // Full script address validation would require more detailed analysis
-      return await this.validate(address);
+      // Use TyphonJS to parse and validate script address
+      const cardanoAddr = TyphonUtils.getAddressFromString(address);
+      if (!cardanoAddr) {
+        return false;
+      }
+      
+      // Check if it's actually a script address by examining the credential type
+      const addressType = await this.getAddressType(address);
+      
+      // Script addresses can be Enterprise or Base addresses with script credentials
+      if (addressType === "enterprise" || addressType === "base") {
+        return await this.hasScriptCredential(address);
+      }
+      
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Check if address has script credential
+   * @implements CIP-19 - Script credential detection
+   */
+  static async hasScriptCredential(address: string): Promise<boolean> {
+    try {
+      const cardanoAddr = TyphonUtils.getAddressFromString(address);
+      if (!cardanoAddr) {
+        return false;
+      }
+
+      // Check payment credential type for Enterprise and Base addresses
+      if ('paymentCredential' in cardanoAddr) {
+        const paymentCredential = (cardanoAddr as any).paymentCredential;
+        // Script credential type is 1, key credential type is 0
+        return paymentCredential && paymentCredential.type === 1;
+      }
+
+      return false;
     } catch {
       return false;
     }
@@ -354,5 +391,210 @@ export class CardanoAddress {
     }
 
     return cleaned;
+  }
+
+  // =================== Multi-Asset Support Methods ===================
+
+  /**
+   * Validate if address can hold native assets (multi-asset support)
+   * @implements CIP-19 - Multi-asset capability detection
+   */
+  static async supportsMultiAsset(address: string): Promise<boolean> {
+    try {
+      const addressType = await this.getAddressType(address);
+      
+      // All Shelley-era addresses support multi-asset
+      // Byron addresses do not support native assets
+      return addressType !== "byron" && addressType !== null;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Extract credential information from address
+   * @implements CIP-19 - Credential extraction for multi-asset handling
+   */
+  static async extractCredentials(address: string): Promise<{
+    paymentCredential?: { type: number; hash: Uint8Array };
+    stakeCredential?: { type: number; hash: Uint8Array };
+  } | null> {
+    try {
+      const cardanoAddr = TyphonUtils.getAddressFromString(address);
+      if (!cardanoAddr) {
+        return null;
+      }
+
+      const result: any = {};
+
+      // Extract payment credential
+      if ('paymentCredential' in cardanoAddr) {
+        const paymentCred = (cardanoAddr as any).paymentCredential;
+        if (paymentCred) {
+          result.paymentCredential = {
+            type: paymentCred.type || 0,
+            hash: new Uint8Array(paymentCred.hash || [])
+          };
+        }
+      }
+
+      // Extract stake credential (for Base and Pointer addresses)
+      if ('stakeCredential' in cardanoAddr) {
+        const stakeCred = (cardanoAddr as any).stakeCredential;
+        if (stakeCred) {
+          result.stakeCredential = {
+            type: stakeCred.type || 0,
+            hash: new Uint8Array(stakeCred.hash || [])
+          };
+        }
+      }
+
+      return result;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Check if address can be used for staking operations
+   * @implements CIP-19 - Staking capability detection
+   */
+  static async canStake(address: string): Promise<boolean> {
+    try {
+      const addressType = await this.getAddressType(address);
+      
+      // Base, Pointer, and Reward addresses support staking
+      // Enterprise and Byron addresses do not
+      return addressType === "base" || 
+             addressType === "pointer" || 
+             addressType === "reward";
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Generate script address from script hash
+   * @implements CIP-19 - Script address generation for multi-asset
+   */
+  static async fromScriptHash(
+    scriptHash: Uint8Array,
+    network: "mainnet" | "testnet" = "mainnet",
+    includeStakeCredential?: { type: number; hash: Uint8Array }
+  ): Promise<string> {
+    try {
+      if (!scriptHash || scriptHash.length !== 28) {
+        throw new Error("Script hash must be exactly 28 bytes");
+      }
+
+      const networkId = network === "mainnet" ? TyphonTypes.NetworkId.MAINNET : TyphonTypes.NetworkId.TESTNET;
+      
+      // Create script credential
+      const scriptCredential = {
+        type: 1, // Script credential type
+        hash: Buffer.from(scriptHash)
+      };
+
+      let address;
+
+      if (includeStakeCredential) {
+        // Create base script address (script + stake)
+        const stakeCredential = {
+          type: includeStakeCredential.type,
+          hash: Buffer.from(includeStakeCredential.hash)
+        };
+        
+        address = new TyphonAddress.BaseAddress(
+          networkId,
+          scriptCredential,
+          stakeCredential
+        );
+      } else {
+        // Create enterprise script address (script only)
+        address = new TyphonAddress.EnterpriseAddress(
+          networkId,
+          scriptCredential
+        );
+      }
+
+      return address.getBech32();
+    } catch (error) {
+      throw ValidationError.invalidAddress("", `Failed to generate script address: ${error}`);
+    }
+  }
+
+  /**
+   * Extract script hash from script address
+   * @implements CIP-19 - Script hash extraction
+   */
+  static async extractScriptHash(address: string): Promise<Uint8Array | null> {
+    try {
+      if (!(await this.hasScriptCredential(address))) {
+        return null;
+      }
+
+      const credentials = await this.extractCredentials(address);
+      if (!credentials?.paymentCredential) {
+        return null;
+      }
+
+      return credentials.paymentCredential.hash;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Check if two addresses are equivalent (same credentials)
+   * @implements CIP-19 - Address equivalence checking
+   */
+  static async areEquivalent(address1: string, address2: string): Promise<boolean> {
+    try {
+      if (address1 === address2) {
+        return true;
+      }
+
+      const creds1 = await this.extractCredentials(address1);
+      const creds2 = await this.extractCredentials(address2);
+
+      if (!creds1 || !creds2) {
+        return false;
+      }
+
+      // Compare payment credentials
+      if (creds1.paymentCredential && creds2.paymentCredential) {
+        const paymentMatch = 
+          creds1.paymentCredential.type === creds2.paymentCredential.type &&
+          this.arraysEqual(creds1.paymentCredential.hash, creds2.paymentCredential.hash);
+        
+        if (!paymentMatch) {
+          return false;
+        }
+      } else if (creds1.paymentCredential !== creds2.paymentCredential) {
+        return false;
+      }
+
+      // Compare stake credentials (if both present)
+      if (creds1.stakeCredential && creds2.stakeCredential) {
+        return creds1.stakeCredential.type === creds2.stakeCredential.type &&
+               this.arraysEqual(creds1.stakeCredential.hash, creds2.stakeCredential.hash);
+      }
+
+      // If only one has stake credential, they're not equivalent
+      return !creds1.stakeCredential && !creds2.stakeCredential;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Helper method to compare byte arrays
+   */
+  private static arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
   }
 }

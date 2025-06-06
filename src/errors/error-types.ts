@@ -37,6 +37,15 @@ export enum ErrorCode {
   // Configuration Errors
   INVALID_CONFIGURATION = "INVALID_CONFIGURATION",
   MISSING_CONFIGURATION = "MISSING_CONFIGURATION",
+
+  // Script and Governance Errors
+  SCRIPT_HASH_FAILED = "SCRIPT_HASH_FAILED",
+  INVALID_SCRIPT_HASH = "INVALID_SCRIPT_HASH",
+  SCRIPT_SERIALIZATION_FAILED = "SCRIPT_SERIALIZATION_FAILED",
+  INVALID_SCRIPT_TYPE = "INVALID_SCRIPT_TYPE",
+  KEY_HASH_FAILED = "KEY_HASH_FAILED",
+  ADDRESS_GENERATION_FAILED = "ADDRESS_GENERATION_FAILED",
+
 }
 
 /**
@@ -201,7 +210,8 @@ export class CryptoOperationError extends CardanoModuleError {
       | ErrorCode.INVALID_PRIVATE_KEY
       | ErrorCode.INVALID_PUBLIC_KEY
       | ErrorCode.SIGNATURE_FAILED
-      | ErrorCode.KEY_DERIVATION_FAILED,
+      | ErrorCode.KEY_DERIVATION_FAILED
+      | ErrorCode.ADDRESS_GENERATION_FAILED,
     message: string,
     context: Record<string, any> = {},
   ) {
@@ -233,7 +243,14 @@ export class ValidationError extends CardanoModuleError {
       | ErrorCode.INVALID_AMOUNT
       | ErrorCode.INVALID_FEE
       | ErrorCode.INVALID_INPUT
-      | ErrorCode.INVALID_ASSET,
+      | ErrorCode.INVALID_ASSET
+      | ErrorCode.SCRIPT_HASH_FAILED
+      | ErrorCode.INVALID_SCRIPT_HASH
+      | ErrorCode.SCRIPT_SERIALIZATION_FAILED
+      | ErrorCode.INVALID_SCRIPT_TYPE
+      | ErrorCode.KEY_HASH_FAILED
+      | ErrorCode.ADDRESS_GENERATION_FAILED
+      | ErrorCode.INVALID_PUBLIC_KEY,
     message: string,
     context: {
       field?: string;

@@ -54,8 +54,7 @@
     "@stricahq/bip32ed25519": "^1.1.1",
     "@stricahq/typhonjs": "^3.0.0",
     "bip39": "^3.0.4",
-    "buffer": "^6.0.3",
-    "cbor-js": "^0.1.0"
+    "buffer": "^6.0.3"
   },
   "devDependencies": {
     "@cardano-sdk/crypto": "^0.3.0",

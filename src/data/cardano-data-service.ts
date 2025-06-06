@@ -1,8 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Logger, Security } from '../utils';
 import { Balance } from '@airgap/module-kit';
-import { utils as TyphonUtils } from '@stricahq/typhonjs';
+import { utils as TyphonUtils, types as TyphonTypes } from '@stricahq/typhonjs';
 import { TyphonProtocolParams, CARDANO_PROTOCOL_DEFAULTS } from '../types/domain';
+import { ProtocolParamsNormalizer, RawProtocolParams } from '../utils/protocol-params-normalizer';
+import { ErrorRecoveryService } from '../utils/error-recovery';
 import BigNumber from 'bignumber.js';
 // Use AirGap's embedded axios to avoid CORS issues (same as Rootstock module)
 import axios from '@airgap/coinlib-core/dependencies/src/axios-0.19.0';
@@ -189,33 +191,41 @@ class KoiosProvider implements DataProvider {
     };
   }
 
-  async getProtocolParameters(): Promise<any> {
-    const targetUrl = `${KoiosProvider.BASE_URL}/epoch_params?_epoch_no=current`;
-    const proxiedUrl = this.assembleRequestUrl(targetUrl);
-    
-    const response = await axios.get(proxiedUrl);
-    if (response.status !== 200) throw new Error(`Koios protocol params error: ${response.status}`);
-    
-    const data = response.data as any[];
-    const params = data[0] || {};
-    
-    // Enhanced protocol parameters mapping for TyphonJS compatibility
-    return {
-      ...params,
-      // Map Koios field names to standard Cardano names
-      min_fee_a: params.min_fee_a || CARDANO_PROTOCOL_DEFAULTS.MIN_FEE_A,
-      min_fee_b: params.min_fee_b || CARDANO_PROTOCOL_DEFAULTS.MIN_FEE_B,
-      max_tx_size: params.max_tx_size || CARDANO_PROTOCOL_DEFAULTS.MAX_TX_SIZE,
-      utxo_cost_per_word: params.utxo_cost_per_word || CARDANO_PROTOCOL_DEFAULTS.UTXO_COST_PER_WORD,
-      pool_deposit: params.pool_deposit || CARDANO_PROTOCOL_DEFAULTS.POOL_DEPOSIT,
-      key_deposit: params.key_deposit || CARDANO_PROTOCOL_DEFAULTS.KEY_DEPOSIT,
-      coins_per_utxo_word: params.utxo_cost_per_word || CARDANO_PROTOCOL_DEFAULTS.UTXO_COST_PER_WORD,
-      max_val_size: params.max_val_size || CARDANO_PROTOCOL_DEFAULTS.MAX_VAL_SIZE,
-      price_mem: params.price_mem || CARDANO_PROTOCOL_DEFAULTS.PRICE_MEM,
-      price_step: params.price_step || CARDANO_PROTOCOL_DEFAULTS.PRICE_STEP,
-      collateral_percent: params.collateral_percent || CARDANO_PROTOCOL_DEFAULTS.COLLATERAL_PERCENT,
-      max_collateral_inputs: params.max_collateral_inputs || CARDANO_PROTOCOL_DEFAULTS.MAX_COLLATERAL_INPUTS
-    };
+  async getProtocolParameters(): Promise<TyphonTypes.ProtocolParams> {
+    return ErrorRecoveryService.protocolParams(async () => {
+      Logger.debug('Fetching protocol parameters from Koios');
+      
+      const targetUrl = `${KoiosProvider.BASE_URL}/epoch_params?_epoch_no=current`;
+      const proxiedUrl = this.assembleRequestUrl(targetUrl);
+      
+      const response = await axios.get(proxiedUrl);
+      if (response.status !== 200) {
+        throw new Error(`Koios protocol params error: ${response.status}`);
+      }
+      
+      const data = response.data as any[];
+      const rawParams = data[0] || {};
+      
+      Logger.debug('Raw protocol parameters received', {
+        provider: 'Koios',
+        fieldsCount: Object.keys(rawParams).length,
+        hasMinFeeA: rawParams.min_fee_a !== undefined,
+        hasMinFeeB: rawParams.min_fee_b !== undefined
+      });
+      
+      // Use the normalizer to convert to TyphonJS format
+      const normalizedParams = ProtocolParamsNormalizer.normalize(rawParams as RawProtocolParams);
+      
+      Logger.debug('Protocol parameters normalized', ProtocolParamsNormalizer.toDebugFormat(normalizedParams));
+      
+      return normalizedParams;
+    }, 'fetch-protocol-parameters').catch(error => {
+      Logger.error('Failed to fetch protocol parameters after retries', error as Error);
+      
+      // Return default parameters with proper types
+      Logger.warn('Using default protocol parameters due to fetch failure');
+      return ProtocolParamsNormalizer.normalize({});
+    });
   }
 
   async broadcastTransaction(signedTx: string): Promise<string> {

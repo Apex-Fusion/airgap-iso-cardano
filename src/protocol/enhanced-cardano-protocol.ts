@@ -92,8 +92,8 @@ export class EnhancedCardanoProtocol extends CardanoDelegationProtocol {
   /**
    * Calculate estimated staking rewards for an amount
    */
-  calculateStakingRewards(amount: string, poolRoa: number, epochsPerYear: number = 73) {
-    return this.getStakingExtensions().calculateStakingRewards(amount, poolRoa, epochsPerYear);
+  calculateStakingRewards(amount: string, poolRoa: number) {
+    return this.getStakingExtensions().calculateStakingRewards(amount, poolRoa);
   }
 
   /**

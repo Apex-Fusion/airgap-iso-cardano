@@ -35,6 +35,11 @@ export const CARDANO_CONSTANTS = {
   // Asset constants
   POLICY_ID_LENGTH: 56, // 28 bytes = 56 hex chars
   MAX_ASSET_NAME_LENGTH: 64, // 32 bytes = 64 hex chars
+  
+  // Cryptographic hash constants
+  KEY_HASH_SIZE: 28, // Blake2b-224 = 28 bytes
+  SCRIPT_HASH_SIZE: 28, // Blake2b-224 = 28 bytes
+  TRANSACTION_HASH_SIZE: 32, // Blake2b-256 = 32 bytes
 } as const;
 
 // TyphonJS Constants Integration (backward compatibility)

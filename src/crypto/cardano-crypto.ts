@@ -594,4 +594,44 @@ export class CardanoCrypto {
     }
   }
 
+  /**
+   * Derive Cardano address from public key using TyphonJS utilities
+   * 
+   * @implements CIP-19 - Address generation from Ed25519 public keys
+   * @param publicKey Public key as hex string or Uint8Array
+   * @param network Network type (mainnet or testnet)
+   * @returns Bech32 encoded Cardano address
+   */
+  static async deriveAddressFromPublicKey(
+    publicKey: string | Uint8Array, 
+    network: 'mainnet' | 'testnet' = 'mainnet'
+  ): Promise<string> {
+    try {
+      // Convert public key to Uint8Array if it's a hex string
+      let pubKeyBytes: Uint8Array;
+      if (typeof publicKey === 'string') {
+        if (publicKey.length !== 64) {
+          throw new Error(`Invalid public key hex length: expected 64 characters, got ${publicKey.length}`);
+        }
+        pubKeyBytes = this.hexToUint8Array(publicKey);
+      } else {
+        pubKeyBytes = publicKey;
+      }
+
+      if (pubKeyBytes.length !== 32) {
+        throw new Error(`Invalid public key length: expected 32 bytes, got ${pubKeyBytes.length} bytes`);
+      }
+
+      // Use CardanoAddress utility which we know works with TyphonJS
+      const { CardanoAddress } = await import('../utils/address');
+      return await CardanoAddress.fromPaymentKey(pubKeyBytes, network);
+    } catch (error) {
+      throw new CryptoOperationError(
+        ErrorCode.ADDRESS_GENERATION_FAILED, 
+        `Failed to derive address from public key: ${error}`
+      );
+    }
+  }
+
+
 }

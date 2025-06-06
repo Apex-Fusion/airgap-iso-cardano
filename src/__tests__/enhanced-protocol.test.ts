@@ -49,10 +49,10 @@ describe("EnhancedCardanoProtocol", () => {
       expect(typeof protocol.getCurrentEpoch).toBe("function");
     });
 
-    it("should calculate staking rewards", () => {
+    it("should calculate staking rewards", async () => {
       const amount = "1000000000"; // 1000 ADA
       const poolRoa = 5.2; // 5.2% ROA
-      const rewards = protocol.calculateStakingRewards(amount, poolRoa);
+      const rewards = await protocol.calculateStakingRewards(amount, poolRoa);
       
       expect(rewards.unit).toBe("ADA");
       expect(Number(rewards.value)).toBeGreaterThan(0);

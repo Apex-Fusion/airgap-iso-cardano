@@ -31,7 +31,12 @@
     "earthly:test:e2e": "earthly +test-e2e",
     "earthly:test:security": "earthly +test-security",
     "earthly:test:performance": "earthly +test-performance",
-    "earthly:ci": "earthly +ci"
+    "earthly:ci": "earthly +ci",
+    "clean-npm-package": "rm -rf npm-package",
+    "build-npm-package": "npm run clean-npm-package && node scripts/build-npm-package.js",
+    "test-npm-package": "cd npm-package && npm install && npm run lint && npm run typecheck && npm test",
+    "publish-npm-package": "cd npm-package && npm run build && npm publish --registry=https://npm.pkg.github.com --//npm.pkg.github.com/:_authToken=$GITHUB_TOKEN",
+    "publish-cardano-package": "npm run build-npm-package && npm run test-npm-package && npm run publish-npm-package && npm run clean-npm-package"
   },
   "keywords": [
     "airgap",

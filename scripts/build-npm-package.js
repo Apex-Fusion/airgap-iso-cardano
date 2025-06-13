@@ -110,10 +110,11 @@ if (fs.existsSync(packageIndexPath)) {
   console.warn('⚠️  Package index file not found, using default exports')
 }
 
-// Create main index files
+// Create main index that just re-exports from v1 (standard AirGap pattern)
 const mainIndexContent = `export * from './v1'
 `
 
+// Create v1/module.ts for the standard AirGap create() function pattern
 const v1ModuleContent = `import { AirGapModule } from '@airgap/module-kit'
 import { CardanoModule } from './index'
 
@@ -173,7 +174,7 @@ const packageJson = {
     '@stricahq/typhonjs': '^3.0.0',
     'bip39': '^3.0.4',
     'buffer': '^6.0.3',
-    'cbor-js': '^0.1.0'
+    'simple-cbor': '^0.4.1'
   },
   devDependencies: {
     'typescript': '^5.3.3',

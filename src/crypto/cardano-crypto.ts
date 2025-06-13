@@ -22,7 +22,7 @@ import { Buffer } from 'buffer';
 import Bip32PrivateKey from '@stricahq/bip32ed25519/dist/Bip32PrivateKey';
 import PublicKey from '@stricahq/bip32ed25519/dist/PublicKey';
 import { crypto as TyphonCrypto } from '@stricahq/typhonjs';
-import * as CBOR from 'cbor-js';
+import { CborSerializer } from 'simple-cbor';
 import { CryptoOperationError, ErrorCode } from '../errors/error-types';
 import { HARDENED_OFFSET, CIP1852_DERIVATION } from '../types/domain';
 
@@ -35,6 +35,8 @@ export function harden(num: number): number {
 }
 
 export class CardanoCrypto {
+  private static cborSerializer = CborSerializer.withDefaultEncoders();
+
   /**
    * Generate a cryptographically secure 24-word BIP39 mnemonic
    * 
@@ -864,7 +866,7 @@ export class CardanoCrypto {
       const unprotectedHeaders = {};
 
       // Encode protected headers using CBOR
-      const protectedBytes = new Uint8Array(CBOR.encode(protectedHeaders));
+      const protectedBytes = new Uint8Array(CardanoCrypto.cborSerializer.serialize(protectedHeaders));
 
       // Create Sig_structure for COSE-Sign1
       // Sig_structure = [
@@ -880,7 +882,7 @@ export class CardanoCrypto {
         messageBytes
       ];
 
-      const sigStructureBytes = new Uint8Array(CBOR.encode(sigStructure));
+      const sigStructureBytes = new Uint8Array(CardanoCrypto.cborSerializer.serialize(sigStructure));
       const sigStructureHash = this.hashBlake2b(new Uint8Array(sigStructureBytes), 32);
 
       // Sign the hash
@@ -933,7 +935,7 @@ export class CardanoCrypto {
         : message;
 
       // Reconstruct the signed structure using CBOR
-      const protectedBytes = new Uint8Array(CBOR.encode(signatureData.protected));
+      const protectedBytes = new Uint8Array(CardanoCrypto.cborSerializer.serialize(signatureData.protected));
 
       const sigStructure = [
         "Signature1",
@@ -942,7 +944,7 @@ export class CardanoCrypto {
         messageBytes
       ];
 
-      const sigStructureBytes = new Uint8Array(CBOR.encode(sigStructure));
+      const sigStructureBytes = new Uint8Array(CardanoCrypto.cborSerializer.serialize(sigStructure));
       const sigStructureHash = this.hashBlake2b(new Uint8Array(sigStructureBytes), 32);
 
       // Verify the signature

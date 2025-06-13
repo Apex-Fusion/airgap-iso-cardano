@@ -1,53 +1,39 @@
 {
-  "name": "airgap-iso-cardano",
-  "version": "1.0.0",
-  "description": "AirGap Cardano isolated module for secure offline transaction signing",
-  "main": "build/dist/index.js",
-  "types": "build/dist/index.d.ts",
-  "scripts": {
-    "dev": "npx tsc --watch",
-    "build": "npx tsc -p config/tsconfig.build.json",
-    "build:bundle": "npm run build && browserify build/dist/index.js -s cardano -o build/airgap-iso-cardano.js",
-    "build:airgap": "npm run build:bundle && node scripts/build/sign-module.js --sign build/airgap-iso-cardano.js",
-    "bundle:airgap:zip": "npm run build:airgap && cd build && zip -r airgap-iso-cardano.zip temp-module && cd ..",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
-    "test:unit": "jest src/__tests__",
-    "test:airgap": "jest test/v1",
-    "test:integration": "jest --testNamePattern=\"integration\"",
-    "test:security": "jest --testNamePattern=\"security\"",
-    "test:performance": "jest --testNamePattern=\"performance\"",
-    "lint": "eslint 'src/**/*.ts' --ignore-pattern 'src/__tests__/**' --ignore-pattern 'src/**/*.test.ts'",
-    "lint:fix": "eslint 'src/**/*.ts' --ignore-pattern 'src/__tests__/**' --ignore-pattern 'src/**/*.test.ts' --fix",
-    "typecheck": "npx tsc --noEmit -p config/tsconfig.json",
-    "clean": "rm -rf build dist",
-    "setup": "bash scripts/setup/setup-test-keys.sh",
-    "generate-keypair": "node scripts/build/sign-module.js --generate-keys",
-    "sign-module": "node scripts/build/sign-module.js",
-    "earthly:build": "earthly +build",
-    "earthly:test": "earthly +test",
-    "earthly:test:integration": "earthly +test-integration",
-    "earthly:test:e2e": "earthly +test-e2e",
-    "earthly:test:security": "earthly +test-security",
-    "earthly:test:performance": "earthly +test-performance",
-    "earthly:ci": "earthly +ci"
-  },
+  "name": "@apex-fusion/cardano",
+  "version": "0.13.40",
+  "description": "The @airgap/cardano is a Cardano implementation of the ICoinProtocol interface from @airgap/coinlib-core.",
   "keywords": [
     "airgap",
-    "cardano",
-    "crypto",
     "blockchain",
-    "offline",
-    "signing",
-    "module"
+    "crypto",
+    "cardano",
+    "ada"
   ],
-  "author": "AirGap Contributors",
   "license": "MIT",
+  "homepage": "https://www.airgap.it",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Apex-Fusion/airgap-iso-cardano"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "rm -rf ./dist && tsc && node scripts/copy-files-after-build.js",
+    "build-scripts": "tsc scripts/*.ts",
+    "lint": "tslint -c ./tslint.json --project ./tsconfig.json --format stylish --fix",
+    "lint:prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "lint-ci": "tslint -t json -o ../../lint-reports/cardano.json --project . || true",
+    "lint-ci:prettier": "prettier \"src/**/*.ts\" \"test/**/*.ts\" --list-different",
+    "test": "TS_NODE_PROJECT='./test/tsconfig.json' nyc mocha --bail --require ts-node/register --require tsconfig-paths/register --require source-map-support/register --full-trace --delay --timeout 40000 ./test/**/**.spec.ts",
+    "test-ci": "nyc --reporter=lcov npm test",
+    "browserify": "browserify ./dist/index.js -s airgapCoinLibCardano > ./dist/airgap-coinlib-cardano.min.js"
+  },
+  "author": "Papers AG <contact@papers.ch> (https://papers.ch)",
   "dependencies": {
     "@airgap/coinlib-core": "^0.13.40",
-    "@airgap/module-kit": "^0.13.21",
-    "@airgap/serializer": "^0.13.21",
+    "@airgap/module-kit": "^0.13.40",
+    "@airgap/serializer": "^0.13.40",
     "@stablelib/blake2b": "^1.0.1",
     "@stablelib/ed25519": "^1.0.3",
     "@stablelib/sha256": "^1.0.1",
@@ -56,22 +42,26 @@
     "bip39": "^3.0.4",
     "buffer": "^6.0.3"
   },
-  "devDependencies": {
-    "@cardano-sdk/crypto": "^0.3.0",
-    "@emurgo/cardano-serialization-lib-nodejs": "^14.1.2",
-    "@types/jest": "^29.5.12",
-    "@types/node": "^20.11.17",
-    "@types/sinon": "^17.0.4",
-    "@typescript-eslint/eslint-plugin": "^6.21.0",
-    "@typescript-eslint/parser": "^6.21.0",
-    "browserify": "^17.0.1",
-    "cardano-crypto.js": "^6.1.2",
-    "esbuild": "^0.25.5",
-    "eslint": "^8.56.0",
-    "jest": "^29.7.0",
-    "lucid-cardano": "^0.10.11",
-    "sinon": "^20.0.0",
-    "ts-jest": "^29.1.2",
-    "typescript": "^5.3.3"
-  }
+  "nyc": {
+    "include": [
+      "src/**/*.ts"
+    ],
+    "exclude": [
+      "test/**/*.spec.ts"
+    ],
+    "extension": [
+      ".ts"
+    ],
+    "require": [
+      "ts-node/register"
+    ],
+    "reporter": [
+      "text",
+      "text-summary"
+    ],
+    "report-dir": "../../coverage/cardano",
+    "sourceMap": true,
+    "instrument": true
+  },
+  "gitHead": "8e8feb6788204501b7173aa825f5456c2a5f185b"
 }

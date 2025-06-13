@@ -82,6 +82,7 @@ pids
 !jest.config.js
 !eslint.config.js
 .keys/
+.npmrc
 
 # Package manager locks (keep package-lock.json but ignore others if using multiple)
 # yarn.lock

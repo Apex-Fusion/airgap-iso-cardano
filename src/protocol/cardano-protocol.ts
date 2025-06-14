@@ -50,7 +50,7 @@ export class CardanoProtocol implements AirGapOfflineProtocol, AirGapOnlineProto
   }
 
   public readonly metadata: ProtocolMetadata<"ADA", "ADA"> = {
-    identifier: "cardano",
+    identifier: "ada",
     name: "Cardano",
     units: {
       ADA: {

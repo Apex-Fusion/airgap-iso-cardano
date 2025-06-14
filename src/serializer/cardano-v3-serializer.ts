@@ -40,7 +40,7 @@ export class CardanoV3SerializerCompanion
           }
         }
       },
-      protocolIdentifier: "cardano"
+      protocolIdentifier: "ada"
     },
     {
       type: IACMessageType.TransactionSignResponse,
@@ -61,7 +61,7 @@ export class CardanoV3SerializerCompanion
           }
         }
       },
-      protocolIdentifier: "cardano"
+      protocolIdentifier: "ada"
     }
   ];
 

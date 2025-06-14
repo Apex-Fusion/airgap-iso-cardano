@@ -55,7 +55,7 @@ describe("CardanoProtocol", () => {
   test("should return protocol metadata", async () => {
     const metadata = await protocol.getMetadata();
 
-    expect(metadata.identifier).toBe("cardano");
+    expect(metadata.identifier).toBe("ada");
     expect(metadata.name).toBe("Cardano");
     expect(metadata.mainUnit).toBe("ADA");
     expect(metadata.units.ADA.symbol.value).toBe("ADA");

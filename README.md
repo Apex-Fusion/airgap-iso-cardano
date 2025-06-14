@@ -29,7 +29,7 @@ npm install @apex-fusion/cardano
 import { CardanoModule } from '@apex-fusion/cardano'
 
 const cardanoModule = new CardanoModule()
-const protocol = await cardanoModule.createOfflineProtocol('cardano')
+const protocol = await cardanoModule.createOfflineProtocol('ada')
 
 // Generate address
 const address = await protocol.getAddressFromPublicKey(publicKey)

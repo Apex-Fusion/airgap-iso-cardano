@@ -332,8 +332,8 @@ describe('CardanoV3SerializerCompanion - Serialization Compatibility', () => {
       
       expect(signRequestSchema).toBeDefined();
       expect(signResponseSchema).toBeDefined();
-      expect(signRequestSchema?.protocolIdentifier).toBe('cardano');
-      expect(signResponseSchema?.protocolIdentifier).toBe('cardano');
+      expect(signRequestSchema?.protocolIdentifier).toBe('ada');
+      expect(signResponseSchema?.protocolIdentifier).toBe('ada');
     });
 
     it('should validate schemas correctly', () => {

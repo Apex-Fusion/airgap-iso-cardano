@@ -229,7 +229,7 @@ class ModuleSigner {
         
         const basicManifest = {
           "name": "airgap-iso-cardano",
-          "identifier": "cardano",
+          "identifier": "ada",
           "version": "1.0.0",
           "author": "AirGap Contributors",
           "description": "AirGap Cardano isolated module for secure offline transaction signing",
@@ -238,8 +238,7 @@ class ModuleSigner {
           },
           "res": {
             "symbol": {
-              "cardano": "file://cardano.svg",
-              "ada": "file://cardano.svg"
+              "ada": "file://ada.svg"
             }
           },
           "include": includeFiles,

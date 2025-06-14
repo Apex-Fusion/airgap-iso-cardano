@@ -10,7 +10,7 @@ describe.skip("Network Switching Feature", () => {
   });
 
   test("should create online protocol for mainnet by string", async () => {
-    const protocol = await module.createOnlineProtocol("cardano", "mainnet");
+    const protocol = await module.createOnlineProtocol("ada", "mainnet");
     expect(protocol).toBeDefined();
     
     const network = await protocol?.getNetwork();

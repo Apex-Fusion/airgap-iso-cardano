@@ -49,7 +49,7 @@ export const CARDANO_TESTNET_PROTOCOL_NETWORK: CardanoProtocolNetwork = {
 };
 
 // Protocol identifier constant
-const CARDANO_PROTOCOL_IDENTIFIER = "cardano";
+const CARDANO_PROTOCOL_IDENTIFIER = "ada";
 
 export class CardanoModule implements AirGapModule<{ ProtocolNetwork: CardanoProtocolNetwork }> {
   private readonly networkRegistries: Record<string, ModuleNetworkRegistry<CardanoProtocolNetwork>>;

@@ -34,7 +34,7 @@ describe("Comprehensive AirGap Interface Compliance", () => {
       const metadata = await protocol.getMetadata();
       
       expect(metadata).toMatchObject({
-        identifier: "cardano",
+        identifier: "ada",
         name: "Cardano",
         units: {
           ADA: {

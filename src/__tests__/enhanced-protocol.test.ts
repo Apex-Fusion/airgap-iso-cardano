@@ -17,7 +17,7 @@ describe("EnhancedCardanoProtocol", () => {
   describe("Basic Protocol Functionality", () => {
     it("should initialize correctly", async () => {
       const metadata = await protocol.getMetadata();
-      expect(metadata.identifier).toBe("cardano");
+      expect(metadata.identifier).toBe("ada");
       expect(metadata.name).toBe("Cardano");
       expect(metadata.mainUnit).toBe("ADA");
     });
@@ -175,7 +175,7 @@ describe("EnhancedCardanoProtocol", () => {
       expect(address).toMatch(/^addr1[a-z0-9]+/);
       
       const metadata = await protocol.getMetadata();
-      expect(metadata.identifier).toBe("cardano");
+      expect(metadata.identifier).toBe("ada");
     });
 
     it("should maintain AirGap compatibility", async () => {

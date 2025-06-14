@@ -64,7 +64,7 @@ describe('Integration: Cardano Module with TyphonJS Polyfill', () => {
         const { CardanoModule } = await import('../index');
         
         const module = new CardanoModule();
-        const offlineProtocol = await module.createOfflineProtocol('cardano');
+        const offlineProtocol = await module.createOfflineProtocol('ada');
         
         expect(offlineProtocol).toBeDefined();
         

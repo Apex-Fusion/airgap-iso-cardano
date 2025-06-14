@@ -5,8 +5,8 @@ describe("Module Creation", () => {
     const module = create();
 
     expect(module.supportedProtocols).toBeDefined();
-    expect(module.supportedProtocols.cardano).toBeDefined();
-    expect(module.supportedProtocols.cardano.type).toBe("full");
+    expect(module.supportedProtocols.ada).toBeDefined();
+    expect(module.supportedProtocols.ada.type).toBe("full");
 
     const serializer = await module.createV3SerializerCompanion();
     expect(serializer).toBeDefined();
@@ -17,14 +17,14 @@ describe("Module Creation", () => {
     const module = create();
 
     expect(module.supportedProtocols).toBeDefined();
-    expect(module.supportedProtocols.cardano).toBeDefined();
-    expect(module.supportedProtocols.cardano.type).toBe("full");
+    expect(module.supportedProtocols.ada).toBeDefined();
+    expect(module.supportedProtocols.ada.type).toBe("full");
 
-    const offlineProtocol = await module.createOfflineProtocol("cardano");
+    const offlineProtocol = await module.createOfflineProtocol("ada");
     expect(offlineProtocol).toBeDefined();
 
     const onlineProtocol = await module.createOnlineProtocol(
-      "cardano",
+      "ada",
       "testnet",
     );
     expect(onlineProtocol).toBeDefined();

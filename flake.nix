@@ -9,25 +9,43 @@
   outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
-        
+        pkgs = import nixpkgs {
+          inherit system;
+          config = {
+            allowUnfree = true;
+            android_sdk.accept_license = true;
+          };
+        };
+
+        # Android SDK configuration
+        androidComposition = pkgs.androidenv.composeAndroidPackages {
+          platformVersions = [ "34" "33" "31" "30" "29" "28" ];
+          buildToolsVersions = [ "34.0.0" "33.0.0" "30.0.3" ];
+          includeEmulator = false;
+          includeNDK = false;
+          includeSources = false;
+          includeSystemImages = false;
+        };
+
         # Essential tools for AirGap development
         devTools = with pkgs; [
           # Core development stack
           nodejs_20
-          typescript
-          
+          yarn
+          jdk17  # Java 17 required by airgap-vault
+
           # Build and packaging tools
           zip
           unzip
           jq
-          
+
           # Git and version control
           git
-          
+
           # Android development tools
           android-tools  # ADB for device communication
-          
+          androidComposition.androidsdk
+
           # Essential Unix tools
           gnumake
           bash
@@ -36,39 +54,48 @@
 
         # Welcome message and environment info
         shellHook = ''
+          # Set Java environment variables
+          export JAVA_HOME="${pkgs.jdk17}"
+
+          # Set Android SDK environment variables
+          export ANDROID_HOME="${androidComposition.androidsdk}/libexec/android-sdk"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          export PATH="$ANDROID_HOME/build-tools/34.0.0:$ANDROID_HOME/build-tools/33.0.0:$ANDROID_HOME/build-tools/30.0.3:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin:$ANDROID_HOME/platform-tools:$PATH"
+
           echo "🌍 AirGap Cardano Development Environment"
           echo "========================================"
           echo ""
+          echo "[DEBUG] Checking Node.js version..."
           echo "📦 Node.js version: $(node --version)"
+          echo "[DEBUG] Checking npm version..."
           echo "📦 npm version: $(npm --version)"
-          echo "📦 TypeScript version: $(npm exec tsc -- --version 2>/dev/null || echo 'TypeScript not installed')"
+          echo "[DEBUG] Version checks complete"
+          echo "☕ Java: $(java -version 2>&1 | head -n 1)"
+          echo "🤖 Android SDK: $ANDROID_SDK_ROOT"
           echo ""
-          
+
           # Check if package.json exists and npm install was run
+          echo "[DEBUG] Checking package.json..."
           if [ -f package.json ]; then
+            echo "[DEBUG] package.json found, checking node_modules..."
             if [ ! -d node_modules ]; then
               echo "📦 Installing dependencies..."
               npm install
             fi
-            
+
+            echo "[DEBUG] Checking if dependencies installed..."
             if [ -d node_modules ]; then
               echo "✅ Dependencies installed"
-              
-              # Run security audit and show summary
-              audit_output=$(npm audit --audit-level=moderate 2>/dev/null || true)
-              if echo "$audit_output" | grep -q "vulnerabilities"; then
-                echo "⚠️  Security vulnerabilities detected - run 'npm audit fix'"
-              else
-                echo "✅ No security vulnerabilities detected"
-              fi
             else
               echo "❌ Dependencies not installed - run 'npm install'"
             fi
-            
+
             # Check build status
+            echo "[DEBUG] Checking build status..."
             if [ -d build ]; then
               echo ""
               if [ -d build/dist ]; then
+                echo "[DEBUG] Counting JS files..."
                 echo "✅ Project built ($(find build/dist -name '*.js' | wc -l) JS files)"
               else
                 echo "🏗️  Project not built yet"
@@ -79,10 +106,11 @@
               echo "🏗️  Project not built yet"
               echo "   Run: npm run build"
             fi
-            
+
             echo ""
             echo "🧪 Run 'npm run test:coverage' to generate coverage report"
           fi
+          echo "[DEBUG] Shell hook complete"
           
           echo ""
           echo "🚀 Development Commands:"
@@ -90,6 +118,7 @@
           echo "   npm run build          # Build TypeScript"
           echo "   npm run build:bundle   # Create browser bundle"
           echo "   npm run bundle:airgap:zip # Create signed module ZIP"
+          echo "   npm audit              # Check for security vulnerabilities"
           echo ""
           echo "🔧 Module Management:"
           echo "   node scripts/build/sign-module.js --generate-keys  # Generate signing keys"
@@ -101,12 +130,28 @@
           echo ""
         '';
 
+        # FHS environment for Android development (fixes AAPT2 issues on NixOS)
+        fhs = pkgs.buildFHSEnv {
+          name = "airgap-android-env";
+          targetPkgs = pkgs: devTools ++ (with pkgs; [
+            # Additional libraries needed for Android tools
+            zlib
+            ncurses5
+            stdenv.cc.cc.lib
+            libglvnd
+          ]);
+          multiPkgs = pkgs: with pkgs; [
+            # 32-bit libraries for Android tools
+            zlib
+            ncurses5
+          ];
+          runScript = "bash";
+          profile = shellHook;
+        };
+
       in
       {
-        devShells.default = pkgs.mkShell {
-          buildInputs = devTools;
-          inherit shellHook;
-        };
+        devShells.default = fhs.env;
 
         # Nix apps for quick access to tools
         apps = {

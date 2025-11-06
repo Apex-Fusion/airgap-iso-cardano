@@ -19,7 +19,7 @@
 
         # Android SDK configuration
         androidComposition = pkgs.androidenv.composeAndroidPackages {
-          platformVersions = [ "34" "33" "31" "30" "29" "28" ];
+          platformVersions = [ "35" "34" "33" "31" "30" "29" "28" ];
           buildToolsVersions = [ "34.0.0" "33.0.0" "30.0.3" ];
           includeEmulator = false;
           includeNDK = false;
@@ -32,7 +32,7 @@
           # Core development stack
           nodejs_20
           yarn
-          jdk17  # Java 17 required by airgap-vault
+          jdk21  # Java 21 required by airgap-wallet plugins (airgap-vault works with 21 too)
 
           # Build and packaging tools
           zip
@@ -55,7 +55,7 @@
         # Welcome message and environment info
         shellHook = ''
           # Set Java environment variables
-          export JAVA_HOME="${pkgs.jdk17}"
+          export JAVA_HOME="${pkgs.jdk21}"
 
           # Set Android SDK environment variables
           export ANDROID_HOME="${androidComposition.androidsdk}/libexec/android-sdk"
@@ -125,8 +125,19 @@
           echo "   node scripts/build/sign-module.js                  # Sign module"
           echo ""
           echo "📱 Android Deployment:"
+          echo "   === airgap-vault (Isolated Module) ==="
           echo "   nix run .#deploy-android # Build, sign and deploy to connected Android device"
+          echo ""
+          echo "   === airgap-wallet (Capacitor App) ==="
+          echo "   Note: airgap-wallet requires manual Capacitor workflow:"
+          echo "   1. yarn install         # Install dependencies"
+          echo "   2. yarn build          # Build web assets (use NODE_OPTIONS=\"--max-old-space-size=8192\" if needed)"
+          echo "   3. npx cap sync android # Sync web assets to Android project"
+          echo "   4. npx cap run android  # Build APK and deploy to device"
+          echo ""
+          echo "   === Common Android Tools ==="
           echo "   adb devices              # Check connected Android devices"
+          echo "   adb kill-server && adb start-server # Restart ADB server if connection issues"
           echo ""
         '';
 

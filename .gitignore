@@ -145,3 +145,6 @@ nix-build-*/         # Nix build temporary directories
 
 # Android SDK configuration (auto-generated)
 local.properties
+
+# Local npm registry
+.verdaccio/

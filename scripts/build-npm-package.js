@@ -250,6 +250,19 @@ const copyScript = `// Copy non-TS files after build
 const fs = require('fs')
 const path = require('path')
 
+// Copy assets to dist folder
+const assetsSrc = path.join(__dirname, '..', 'assets')
+const assetsDest = path.join(__dirname, '..', 'dist', 'assets')
+
+if (fs.existsSync(assetsSrc)) {
+  fs.mkdirSync(assetsDest, { recursive: true })
+  const files = fs.readdirSync(assetsSrc)
+  for (const file of files) {
+    fs.copyFileSync(path.join(assetsSrc, file), path.join(assetsDest, file))
+  }
+  console.log('🎨 Copied assets to dist/assets/')
+}
+
 console.log('📦 Post-build file copying complete')
 `
 
@@ -269,6 +282,33 @@ import { CardanoModule } from '@apex-fusion/cardano'
 
 const cardanoModule = new CardanoModule()
 \`\`\`
+
+## Icon Assets
+
+This package includes Cardano icon assets in the \`assets/\` and \`dist/assets/\` directories:
+
+- \`ada.svg\` / \`ada.png\` - ADA symbol icons
+- \`cardano.svg\` / \`cardano.png\` - Cardano protocol icons
+
+### Using icons in your app
+
+Copy the icons to your app's assets folder:
+
+\`\`\`bash
+# From your app's root directory
+cp node_modules/@apex-fusion/cardano/assets/*.svg src/assets/symbols/
+cp node_modules/@apex-fusion/cardano/assets/*.png src/assets/symbols/
+\`\`\`
+
+Or add a postinstall script to your package.json:
+
+\`\`\`json
+{
+  "scripts": {
+    "postinstall": "cp node_modules/@apex-fusion/cardano/assets/* src/assets/symbols/ 2>/dev/null || true"
+  }
+}
+\`\`\`
 `
 
 fs.writeFileSync(path.join(NPM_DIR, 'README.md'), readme)
@@ -280,6 +320,37 @@ const npmrc = `@apex-fusion:registry=https://npm.pkg.github.com
 
 fs.writeFileSync(path.join(NPM_DIR, '.npmrc'), npmrc)
 
+// Copy icon/symbol assets
+const assetsSrcDir = path.join(ROOT_DIR, 'assets')
+const assetsDestDir = path.join(NPM_DIR, 'assets')
+
+if (fs.existsSync(assetsSrcDir)) {
+  fs.mkdirSync(assetsDestDir, { recursive: true })
+  const assetFiles = fs.readdirSync(assetsSrcDir)
+
+  for (const file of assetFiles) {
+    const srcPath = path.join(assetsSrcDir, file)
+    const destPath = path.join(assetsDestDir, file)
+
+    if (fs.statSync(srcPath).isFile()) {
+      fs.copyFileSync(srcPath, destPath)
+      console.log(`🎨 Copied asset: assets/${file}`)
+    }
+  }
+
+  // Also copy as 'cardano.svg' and 'cardano.png' for apps that use protocol name
+  const adaSvg = path.join(assetsSrcDir, 'ada.svg')
+  const adaPng = path.join(assetsSrcDir, 'ada.png')
+  if (fs.existsSync(adaSvg)) {
+    fs.copyFileSync(adaSvg, path.join(assetsDestDir, 'cardano.svg'))
+    console.log(`🎨 Copied asset: assets/cardano.svg (from ada.svg)`)
+  }
+  if (fs.existsSync(adaPng)) {
+    fs.copyFileSync(adaPng, path.join(assetsDestDir, 'cardano.png'))
+    console.log(`🎨 Copied asset: assets/cardano.png (from ada.png)`)
+  }
+}
+
 // Copy configuration files from root project
 const configFiles = [
   'eslint.config.mjs',
@@ -289,7 +360,7 @@ const configFiles = [
 for (const configFile of configFiles) {
   const srcPath = path.join(ROOT_DIR, configFile)
   const destPath = path.join(NPM_DIR, configFile)
-  
+
   if (fs.existsSync(srcPath)) {
     fs.copyFileSync(srcPath, destPath)
     console.log(`📄 Copied config: ${configFile}`)

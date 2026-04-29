@@ -8,8 +8,10 @@ import {
   Balance,
   CryptoConfiguration,
   CryptoDerivative,
+  FeeDefaults,
   FeeEstimation,
   KeyPair,
+  newAmount,
   ProtocolMetadata,
   ProtocolNetwork,
   PublicKey,
@@ -33,12 +35,35 @@ import BigNumber from 'bignumber.js';
 import { CIP1852_DERIVATION, CARDANO_CONSTANTS } from '../types/domain';
 
 export class CardanoProtocol implements AirGapOfflineProtocol, AirGapOnlineProtocol {
-  
+
   /**
    * Market symbol for price services (used by AirGap Wallet)
    */
   public readonly marketSymbol: string = "ada";
-  
+
+  /**
+   * Units definition for ADA (required for fee defaults)
+   */
+  private readonly units = {
+    ADA: {
+      symbol: { value: "ADA", market: "ada" },
+      decimals: 6,
+    },
+  };
+
+  /**
+   * Fee defaults for Cardano transactions
+   * These are typical fees based on current Cardano protocol parameters:
+   * - Low: ~0.17 ADA (minimum viable fee for simple transactions)
+   * - Medium: ~0.20 ADA (standard fee for typical transactions)
+   * - High: ~0.25 ADA (priority fee for faster confirmation)
+   */
+  public readonly feeDefaults: FeeDefaults<"ADA"> = {
+    low: newAmount(0.17, 'ADA').blockchain(this.units),
+    medium: newAmount(0.20, 'ADA').blockchain(this.units),
+    high: newAmount(0.25, 'ADA').blockchain(this.units),
+  };
+
   /**
    * Convert lovelace to ADA using TyphonJS utilities
    */
@@ -52,13 +77,11 @@ export class CardanoProtocol implements AirGapOfflineProtocol, AirGapOnlineProto
   public readonly metadata: ProtocolMetadata<"ADA", "ADA"> = {
     identifier: "ada",
     name: "Cardano",
-    units: {
-      ADA: {
-        symbol: { value: "ADA", market: "ada" },
-        decimals: 6,
-      },
-    },
+    units: this.units,
     mainUnit: "ADA",
+    fee: {
+      defaults: this.feeDefaults,
+    },
     account: {
       standardDerivationPath: `m/${CIP1852_DERIVATION.PURPOSE}'/${CIP1852_DERIVATION.COIN_TYPE}'/0'/0/0`,
       address: {

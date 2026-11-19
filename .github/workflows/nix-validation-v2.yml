@@ -21,7 +21,7 @@ jobs:
   # ❄️ Flake Validation
   validate-flake:
     name: ❄️ Validate Nix Flake
-    runs-on: arc-runner-set
+    runs-on: nixos
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
@@ -42,7 +42,7 @@ jobs:
   # 🧪 Development Environment Test
   test-dev-environment:
     name: 🧪 Test Development Environment
-    runs-on: arc-runner-set
+    runs-on: nixos
     needs: validate-flake
     steps:
       - name: 📥 Checkout repository
@@ -76,7 +76,7 @@ jobs:
   # ✅ Validation Summary
   validation-summary:
     name: ✅ Nix Validation Summary
-    runs-on: arc-runner-set
+    runs-on: nixos
     needs: [validate-flake, test-dev-environment]
     if: always()
     steps:

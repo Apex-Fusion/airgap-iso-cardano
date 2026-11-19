@@ -47,7 +47,7 @@ jobs:
   # 🔍 Environment Detection
   detect-environment:
     name: 🔍 Detect CI Environment
-    runs-on: arc-runner-set
+    runs-on: nixos
     outputs:
       strategy: ${{ steps.detect.outputs.strategy }}
       docker_available: ${{ steps.detect.outputs.docker_available }}
@@ -104,7 +104,7 @@ jobs:
   # ❄️ Nix Setup (Always Required)
   nix-setup:
     name: ❄️ Setup Nix Environment (v2.1-${{ github.run_number }})
-    runs-on: arc-runner-set
+    runs-on: nixos
     needs: detect-environment
     steps:
       - name: 📥 Checkout repository
@@ -135,7 +135,7 @@ jobs:
   # 🏗️ Build Stage
   build:
     name: 🏗️ Build (${{ needs.detect-environment.outputs.strategy }})
-    runs-on: arc-runner-set
+    runs-on: nixos
     needs: [detect-environment, nix-setup]
     steps:
       - name: 📥 Checkout repository
@@ -206,7 +206,7 @@ jobs:
   # 🧪 Test Matrix
   test:
     name: 🧪 Test (${{ matrix.suite }})
-    runs-on: arc-runner-set
+    runs-on: nixos
     needs: [detect-environment, nix-setup]
     strategy:
       fail-fast: false
@@ -249,7 +249,7 @@ jobs:
   # 🧹 Code Quality
   quality:
     name: 🧹 Code Quality
-    runs-on: arc-runner-set
+    runs-on: nixos
     needs: [detect-environment, nix-setup]
     steps:
       - name: 📥 Checkout repository
@@ -274,7 +274,7 @@ jobs:
   # 🧪 Integration Tests
   integration:
     name: 🧪 Integration Verification
-    runs-on: arc-runner-set
+    runs-on: nixos
     needs: [detect-environment, build, test]
     if: always() && !cancelled()
     steps:
@@ -305,7 +305,7 @@ jobs:
   # ✅ CI Success Gate
   ci-success:
     name: ✅ CI Pipeline Complete
-    runs-on: arc-runner-set
+    runs-on: nixos
     needs: [detect-environment, nix-setup, build, test, quality, integration]
     if: always()
     steps:
@@ -329,7 +329,7 @@ jobs:
   # 💬 PR Comment
   pr-comment:
     name: 💬 PR Success Notification
-    runs-on: arc-runner-set
+    runs-on: nixos
     needs: [detect-environment, ci-success]
     if: github.event_name == 'pull_request' && needs.ci-success.result == 'success'
     steps:

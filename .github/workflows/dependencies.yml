@@ -31,7 +31,7 @@ jobs:
   # 📊 Dependency Analysis
   dependency-analysis:
     name: 📊 Dependency Analysis
-    runs-on: nixos
+    runs-on: self-hosted
     outputs:
       has-updates: ${{ steps.check.outputs.has-updates }}
       has-security: ${{ steps.security.outputs.has-security }}
@@ -85,7 +85,7 @@ jobs:
   # 🔄 Minor/Patch Updates
   minor-updates:
     name: 🔄 Minor & Patch Updates
-    runs-on: nixos
+    runs-on: self-hosted
     needs: dependency-analysis
     if: needs.dependency-analysis.outputs.has-updates == 'true' && (github.event.inputs.update_type == 'minor' || github.event.inputs.update_type == 'patch' || github.event_name == 'schedule')
     steps:
@@ -173,7 +173,7 @@ jobs:
   # 🔒 Security Updates
   security-updates:
     name: 🔒 Security Updates
-    runs-on: nixos
+    runs-on: self-hosted
     needs: dependency-analysis
     if: needs.dependency-analysis.outputs.has-security == 'true' || github.event.inputs.update_type == 'security'
     steps:
@@ -242,7 +242,7 @@ jobs:
   # 📊 Dependency Report
   dependency-report:
     name: 📊 Generate Report
-    runs-on: nixos
+    runs-on: self-hosted
     needs: dependency-analysis
     if: always()
     steps:

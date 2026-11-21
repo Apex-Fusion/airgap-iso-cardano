@@ -41,7 +41,7 @@ jobs:
   # 🔍 Pre-release Validation
   pre-release:
     name: 🔍 Pre-release Validation
-    runs-on: nixos
+    runs-on: self-hosted
     outputs:
       version: ${{ steps.version.outputs.version }}
       version_clean: ${{ steps.version.outputs.version_clean }}
@@ -159,7 +159,7 @@ jobs:
   # 🏗️ Release Build
   release-build:
     name: 🏗️ Release Build (${{ needs.pre-release.outputs.strategy }})
-    runs-on: nixos
+    runs-on: self-hosted
     needs: pre-release
     steps:
       - name: 📥 Checkout repository
@@ -291,7 +291,7 @@ jobs:
   # 🧪 Release Testing
   release-testing:
     name: 🧪 Release Testing
-    runs-on: nixos
+    runs-on: self-hosted
     needs: [pre-release, release-build]
     steps:
       - name: 📥 Checkout repository
@@ -363,7 +363,7 @@ jobs:
   # 🚀 GitHub Release
   github-release:
     name: 🚀 Create GitHub Release
-    runs-on: nixos
+    runs-on: self-hosted
     needs: [pre-release, release-build, release-testing]
     if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || github.event_name == 'workflow_dispatch'
     steps:
@@ -484,7 +484,7 @@ jobs:
   # 📊 Release Summary
   release-summary:
     name: 📊 Release Summary
-    runs-on: nixos
+    runs-on: self-hosted
     needs: [pre-release, release-build, release-testing, github-release]
     if: always()
     steps:
